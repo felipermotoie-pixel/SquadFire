@@ -33,9 +33,10 @@ export function formationLayout(n: number): FormationLayout {
     return { rows: 0, columns: 0, horizontalSpacing: SQUAD.formationHorizontalSpacing, longitudinalSpacing: SQUAD.formationLongitudinalSpacing, halfWidth: 0, frontY: 0 };
   }
   const maxColumns = Math.max(1, Math.min(SQUAD.formationMaxColumns, Math.floor(SQUAD.formationMaxWidth / SQUAD.formationHorizontalSpacing) + 1));
-  const rows = Math.ceil(count / maxColumns);
-  // Balance columns across rows so the block stays rectangular (7 → 4+3, not 5+2).
-  const columns = Math.ceil(count / rows);
+  // Width grows first (more lanes), then rows: 7 → 5+2, never 4+3. Once the block is
+  // at full width, growth must not narrow it — a +3 gate should add fire, not take lanes away.
+  const columns = Math.min(count, maxColumns);
+  const rows = Math.ceil(count / columns);
   const horizontalSpacing = SQUAD.formationHorizontalSpacing;
   const longitudinalSpacing = rows > 1 ? clamp(SQUAD.formationMaxDepth / (rows - 1), SQUAD.formationMinLongitudinalSpacing, SQUAD.formationLongitudinalSpacing) : SQUAD.formationLongitudinalSpacing;
   const depth = (rows - 1) * longitudinalSpacing;

@@ -3,14 +3,14 @@
 Updated: 2026-09-10
 
 ## Version
-`v0.3.0` — Straight Fire + Forward Alignment. Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
+`v0.3.1` — Straight Fire + Forward Alignment (`v0.3.0` + review fixes: width-first formation growth, immediate anchor clamp on growth, incremental drag, no sprite sway). Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
 
 ## v0.3.0 — what changed
 - All auto-targeting removed (`targeting.ts`, reservations, boss aim offsets, planned-distance despawn, enemy drift toward the squad, boss tracking). Soldiers fire continuously along `ROAD_FORWARD`; damage is collision-only; the drag is the aim.
 - Forward alignment: new rear-view soldier asset with a vertical rifle, `baseVisualRotationOffset` hook on visuals, sprite never rotated by gameplay state.
 - Formation rebuilt as a straight symmetric block with a width cap (5 columns) and rows behind; anchor clamp derived from the block width.
 - Boss: slow bounded patrol with dwell. Debug overlay: road basis, forward vectors, lanes, projectile vectors/paths, hitboxes.
-- Tests rewritten for straight fire (37 checks); render harness gained alignment 1/5/10/25/50 and off-axis scenes; dev panel gained 50 / Off-axis wall / Lane crosser.
+- Tests rewritten for straight fire (39 checks); render harness gained alignment 1/5/10/25/50 and off-axis scenes; dev panel gained 50 / Off-axis wall / Lane crosser.
 
 ## Done
 - Skia-rendered 2.5D causeway: perspective road to the horizon, animated water, volumetric barrier modules, painted coastal horizon, haze, contact shadows.

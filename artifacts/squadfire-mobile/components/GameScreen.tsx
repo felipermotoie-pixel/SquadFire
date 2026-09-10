@@ -143,19 +143,23 @@ export function GameScreen() {
     [pushNotice],
   );
 
-  // Horizontal drag anywhere on the battlefield steers the squad anchor.
-  const dragStart = useRef({ x: 0, anchor: 0 });
+  // Horizontal drag anywhere on the battlefield steers the squad anchor. Deltas are
+  // applied incrementally against the *current* target, so the control stays
+  // responsive when a squad gate narrows the anchor clamp mid-gesture.
+  const lastDragX = useRef(0);
   const pan = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 2,
         onPanResponderGrant: (evt) => {
-          dragStart.current = { x: evt.nativeEvent.pageX, anchor: game.targetAnchorX };
+          lastDragX.current = evt.nativeEvent.pageX;
         },
         onPanResponderMove: (evt) => {
-          const dx = evt.nativeEvent.pageX - dragStart.current.x;
-          game.setInputX(dragStart.current.anchor + (dx / game.cam.halfWidthBase) * 1.35);
+          const x = evt.nativeEvent.pageX;
+          const dx = x - lastDragX.current;
+          lastDragX.current = x;
+          game.setInputX(game.targetAnchorX + (dx / game.cam.halfWidthBase) * 1.35);
         },
       }),
     [game],
@@ -357,7 +361,7 @@ function DevPanel({
     if (crosserTimer.current) clearInterval(crosserTimer.current);
     crosserTimer.current = null;
   };
-  useEffect(() => stopCrosser, []);
+  useEffect(() => stopCrosser, [game]);
   const setSquad = (n: number) => {
     game.setSquadSize(n);
   };

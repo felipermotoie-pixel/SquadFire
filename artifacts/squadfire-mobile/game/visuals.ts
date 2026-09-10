@@ -22,6 +22,8 @@ export interface CharacterVisualDefinition {
   shadowOffsetX: number;
   shadowOffsetY: number;
   shadowScale: number;
+  /** How far in front of the foot line (world units, along ROAD_FORWARD) the barrel tip sits. */
+  muzzleForwardOffset: number;
   /** Weapon grip location (fractions). Used for the recoil pivot. */
   weaponAnchorX: number;
   weaponAnchorY: number;
@@ -51,6 +53,7 @@ export const PLAYER_SOLDIER_VISUAL: CharacterVisualDefinition = {
   shadowOffsetX: 0,
   shadowOffsetY: 0,
   shadowScale: 0.62,
+  muzzleForwardOffset: 0.03,
   // Rifle grip, above the right shoulder.
   weaponAnchorX: 0.672,
   weaponAnchorY: 0.3,
@@ -72,6 +75,7 @@ export const ENEMY_GRUNT_VISUAL: CharacterVisualDefinition = {
   shadowOffsetX: 0,
   shadowOffsetY: 0,
   shadowScale: 0.62,
+  muzzleForwardOffset: 0.03,
   weaponAnchorX: 0.5,
   weaponAnchorY: 0.42,
   muzzleAnchorX: 0.95,
@@ -86,6 +90,7 @@ export const ENEMY_ELITE_VISUAL: CharacterVisualDefinition = {
   visualId: 'elite-red',
   height: 0.62,
   shadowScale: 0.7,
+  muzzleForwardOffset: 0.03,
 };
 
 export const BOSS_VISUAL: CharacterVisualDefinition = {
@@ -98,6 +103,7 @@ export const BOSS_VISUAL: CharacterVisualDefinition = {
   shadowOffsetX: 0,
   shadowOffsetY: 0,
   shadowScale: 0.85,
+  muzzleForwardOffset: 0.03,
   weaponAnchorX: 0.15,
   weaponAnchorY: 0.55,
   muzzleAnchorX: 0.06,

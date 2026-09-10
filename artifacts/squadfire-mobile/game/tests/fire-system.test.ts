@@ -260,6 +260,33 @@ for (const n of [1, 5, 10, 25, 50]) {
   );
 }
 
+// Growth never narrows a full-width block (5 → 6, 10 → 11 keep 5 lanes) --------
+{
+  const widths = [5, 6, 7, 10, 11, 13].map((n) => formationLayout(n).columns);
+  check(
+    'Formation: growth keeps the lane count once at full width',
+    widths.every((c) => c === SQUAD.formationMaxColumns),
+    `columns for 5/6/7/10/11/13 soldiers = ${widths.join('/')}`,
+  );
+}
+
+// Growth at the road edge clamps the smoothed anchor immediately ----------------
+{
+  const g = makeGame(1);
+  g.setInputX(anchorLimitFor(1));
+  run(g, 2);
+  const before = g.anchorX;
+  g.addSoldiers(4);
+  g.advance(1 / 120);
+  const limit = anchorLimitFor(5);
+  const maxX = Math.max(...g.soldiers.map((s) => s.slot.x + g.anchorX));
+  check(
+    'Formation: growing at the edge keeps the whole block on the road at once',
+    before > limit && Math.abs(g.anchorX) <= limit + 1e-9 && maxX <= SQUAD.roadHalfWidth + 1e-9,
+    `anchor ${before.toFixed(2)} → ${g.anchorX.toFixed(2)} (limit ±${limit.toFixed(2)}), outermost slot x ${maxX.toFixed(2)}`,
+  );
+}
+
 // Cadence ---------------------------------------------------------------------
 {
   const g = makeGame(1);

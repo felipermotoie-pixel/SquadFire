@@ -121,7 +121,6 @@ export class Game {
   private nextSoldierId = 1;
   private nextEnemyId = 1;
   private nextGateId = 1;
-  private enemyById = new Map<number, Enemy>();
   private spawnTimer = 1.2;
   private gateTimer = GATES.firstAt;
   private bossSpawned = false;
@@ -305,8 +304,11 @@ export class Game {
       s.slot.y = slots[i].y;
     });
     // A wider block has less room to move; keep the whole formation on the road.
+    // Both the smoothed anchor and its target are clamped, so a squad that grows while
+    // parked at the edge snaps inside the new limit this frame instead of drifting in.
     const limit = anchorLimitFor(alive.length);
     this.targetAnchorX = clamp(this.targetAnchorX, -limit, limit);
+    this.anchorX = clamp(this.anchorX, -limit, limit);
   }
 
   // ---------------------------------------------------------------------------
@@ -368,7 +370,6 @@ export class Game {
       lastHitDir: 0,
     };
     this.enemies.push(enemy);
-    this.enemyById.set(enemy.id, enemy);
     return enemy;
   }
 
@@ -516,7 +517,7 @@ export class Game {
   muzzleOf(s: Soldier, out: { x: number; y: number; h: number }): { x: number; y: number; h: number } {
     const frame = spriteFrame(this.cam, PLAYER_SOLDIER_VISUAL, s.pos.x, s.pos.y, PLAYER_SOLDIER_VISUAL.baseVisualRotationOffset, 1, this.frame);
     out.x = (frame.muzzleX - this.cam.centerX) / (this.cam.halfWidthBase * frame.scale);
-    out.y = s.pos.y + 0.03;
+    out.y = s.pos.y + PLAYER_SOLDIER_VISUAL.muzzleForwardOffset;
     out.h = Math.max(0.05, (frame.footY - frame.muzzleY) / frame.unit);
     return out;
   }
@@ -734,7 +735,6 @@ export class Game {
       }
     }
     if (removed) {
-      for (const e of this.enemies) if (!e.alive) this.enemyById.delete(e.id);
       this.enemies = this.enemies.filter((e) => e.alive);
     }
   }

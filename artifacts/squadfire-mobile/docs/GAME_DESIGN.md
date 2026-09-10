@@ -16,7 +16,7 @@ Command a growing squad of armored troopers pushing along a sunlit coastal cause
 ## Squad
 - Starts with 5 soldiers, capped at 50.
 - Every soldier faces the vanishing point (`ROAD_FORWARD`). Body heading is never derived from drag, targets, or slots.
-- Formation (`game/formation.ts`): a straight, symmetric block. Rows perpendicular to the road, columns parallel to it. `formationHorizontalSpacing` 0.25, `formationLongitudinalSpacing` 0.17, `formationMaxWidth` 1.0 / `formationMaxColumns` 5. Past 5 columns soldiers add rows behind; deep blocks compress row pitch (min 0.10) and creep forward at most 0.3 so the rear stays on screen. 50 soldiers = 5 × 10.
+- Formation (`game/formation.ts`): a straight, symmetric block. Rows perpendicular to the road, columns parallel to it. `formationHorizontalSpacing` 0.25, `formationLongitudinalSpacing` 0.17, `formationMaxWidth` 1.0 / `formationMaxColumns` 5. Width fills first (7 soldiers = 5 + 2, rear row centered), then rows are added behind — growth never narrows the block; deep blocks compress row pitch (min 0.10) and creep forward at most 0.3 so the rear stays on screen. 50 soldiers = 5 × 10.
 - Each soldier is an independent shooter with a fixed lane (see `FIRING_SYSTEM.md`).
 - Losing soldiers: enemy contact at the squad line removes one; a boss slam that lands on the anchor lane removes one.
 

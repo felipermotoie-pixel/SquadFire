@@ -606,12 +606,13 @@ export class SceneRenderer {
     const cycle = t * 12 + s.animPhase;
     const run = Math.sin(cycle);
     const bob = -Math.abs(run) * 0.028 * frame.unit;
-    const sway = Math.sin(cycle * 0.5) * 0.035;
+    // Run cycle = bob + squash only. No sway: the body (and the barrel) never leaves
+    // ROAD_FORWARD while alive, so the drawn muzzle matches the simulated one.
     let sx = 1 + Math.abs(run) * 0.018;
     let sy = 1 - Math.abs(run) * 0.03 + s.recoil * 0.05;
     let alpha = 1;
     let filter: SkColorFilter | null = null;
-    let extraRot = sway;
+    let extraRot = 0;
     let dropY = 0;
 
     if (s.age < 0.45) {

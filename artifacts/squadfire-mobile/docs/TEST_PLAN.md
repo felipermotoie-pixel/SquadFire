@@ -1,7 +1,7 @@
 # SquadFire — Test Plan
 
 ## Automated (headless)
-`pnpm run test:sim` — `game/tests/fire-system.test.ts`, 37 checks:
+`pnpm run test:sim` — `game/tests/fire-system.test.ts`, 39 checks:
 
 | Group | What it proves |
 | --- | --- |
@@ -14,6 +14,7 @@
 | Test E — drag after spawn | Projectiles tracked across a drag keep `x, vx, vy, originX` bit-identical. |
 | Boss honesty | Squad parked at 0.7, boss at −0.4: no damage, all shots straight; damage only once the lane is dragged onto the hitbox. Patrol stays inside ±0.5, ≤ 0.28 u/s, with dwell, regardless of squad position. |
 | Formation 1/5/10/25/50 | Straight symmetric block: every row sums to x = 0, width ≤ 1.0, ≤ 5 columns, rear row ≥ −0.75, anchor limit + half-width ≤ road half-width. |
+| Formation growth | 5/6/7/10/11/13 soldiers all keep 5 columns (growth never removes lanes). A 1-soldier squad parked at ±0.72 that grows to 5 is clamped to ±0.45 on the same frame; outermost slot stays ≤ road half-width. |
 | Cadence | 1 soldier ≈ 2/s with period 0.5 s; 3 soldiers never fire on the same substep; 10 soldiers ≈ 20/s with ≤ 3 per substep. |
 | §44 acceptance | 1 soldier → ~20 shots/10 s; 5 → ~100; +25 % FR → ~12.5 shots/s; five distinct shooters. |
 | Muzzle | Shot origin within 0.3 of the owner's x (currently 0.036). |
@@ -38,4 +39,4 @@
 Use the dev overlay. Record fps, frame ms, peak ms for: 1, 10, 25, 50 soldiers; 100 and 300 enemies; boss with 50 soldiers (500+ projectiles). Targets: 60 fps sustained, no growth of frame time over 30 minutes (pools are fixed size; watch `peak`).
 
 ## Status
-Automated: pass (37/37). Typecheck: clean. Headless renders reviewed for alignment at 1/5/10/25/50 and the off-axis miss. Manual device pass: **not yet executed in this environment** (no device attached).
+Automated: pass (39/39). Typecheck: clean. Headless renders reviewed for alignment at 1/5/10/25/50 and the off-axis miss. Manual device pass: **not yet executed in this environment** (no device attached).

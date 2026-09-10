@@ -6,7 +6,7 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 
 - Workflow `artifacts/squadfire-mobile: expo` — Expo dev server (Expo Go + web preview). Web needs WebGL.
 - `pnpm --filter @workspace/squadfire-mobile run typecheck` — TypeScript for the game.
-- `pnpm --filter @workspace/squadfire-mobile run test:sim` — headless simulation/firing tests (37 checks: straight-fire Tests A–E, boss/enemy honesty, formation alignment 1–50, cadence, brief §44 acceptance, perf sweeps and a 500-projectile stress case).
+- `pnpm --filter @workspace/squadfire-mobile run test:sim` — headless simulation/firing tests (39 checks: straight-fire Tests A–E, boss/enemy honesty, formation alignment 1–50, cadence, brief §44 acceptance, perf sweeps and a 500-projectile stress case).
 - `pnpm --filter @workspace/squadfire-mobile run render:preview` — renders 12 scenario PNGs (incl. alignment at 1/5/10/25/50 and the off-axis miss) to `/tmp/squadfire-preview/` through CanvasKit; use this for visual review when a screenshot tool lacks WebGL.
 - `pnpm run typecheck` — full workspace typecheck.
 - The `api-server` / `api-spec` / `db` packages are the untouched monorepo template; the game is fully client-side (no `DATABASE_URL` needed).

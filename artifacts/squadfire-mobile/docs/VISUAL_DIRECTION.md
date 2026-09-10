@@ -14,7 +14,7 @@ Pitched-down perspective: the road is widest at the bottom (squad) and funnels t
 - Gates: cyan (squad), gold (damage), violet (fire rate) frames with huge numerals.
 
 ## Characters
-Generated 2.5D sprites, alpha-trimmed. Anchors and muzzles are declared in `game/visuals.ts` (foot anchor, weapon anchor, muzzle position as fractions of the frame). Soldiers rotate toward their aim using `soldierSpriteRotation`, shared with the sim so the muzzle stays on the barrel. Even-id enemies are mirrored for variety.
+Generated 2.5D sprites, alpha-trimmed. Anchors and muzzles are declared in `game/visuals.ts` (foot anchor, weapon anchor, muzzle position as fractions of the frame). Soldiers always face the vanishing point; the sprite is authored rear-view with a vertical rifle and is never rotated by gameplay (only `baseVisualRotationOffset`, shared with the sim so the muzzle stays on the barrel tip). Even-id enemies are mirrored for variety.
 
 ## Lighting cues
 Key light from top-left: contact shadow ellipses under every unit, barrier top faces brightest, right inner faces lit. Haze fades the far road into the horizon.
