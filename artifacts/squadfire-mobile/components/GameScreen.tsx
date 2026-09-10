@@ -352,10 +352,17 @@ function DevPanel({
 }) {
   const [, bump] = useState(0);
   const refresh = () => bump((n) => n + 1);
+  const crosserTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopCrosser = () => {
+    if (crosserTimer.current) clearInterval(crosserTimer.current);
+    crosserTimer.current = null;
+  };
+  useEffect(() => stopCrosser, []);
   const setSquad = (n: number) => {
     game.setSquadSize(n);
   };
   const clearField = () => {
+    stopCrosser();
     for (const e of game.enemies) {
       e.alive = false;
       e.death = 1;
@@ -375,6 +382,34 @@ function DevPanel({
     game.setSquadSize(20);
     game.spawnBoss();
     game.boss.pos.y = BOSS.holdY + 0.3;
+  };
+  // Straight-fire Test B: immortal, motionless enemies parked far right. Bullets must
+  // miss until the squad is dragged under them.
+  const offAxis = () => {
+    game.scripted = true;
+    clearField();
+    for (let i = 0; i < 6; i++) {
+      const e = game.spawnEnemy('grunt', 0.55 + (i % 3) * 0.15, 2.6 + Math.floor(i / 3) * 0.5);
+      e.speed = 0;
+      e.hp = 1e6;
+      e.maxHp = 1e6;
+    }
+  };
+  // Straight-fire Test C: one immortal enemy strafing across every lane. Enemy
+  // wander is deliberately tiny, so the crossing is driven from the panel.
+  const crosser = () => {
+    game.scripted = true;
+    clearField();
+    const e = game.spawnEnemy('grunt', -0.9, 3.0);
+    e.speed = 0;
+    e.hp = 1e6;
+    e.maxHp = 1e6;
+    const start = game.time;
+    crosserTimer.current = setInterval(() => {
+      if (!e.alive) return stopCrosser();
+      const t = game.time - start;
+      e.pos.x = -0.9 + 1.8 * ((t / 8) % 1);
+    }, 16);
   };
   const Btn = ({ label, onPress, accent }: { label: string; onPress: () => void; accent?: boolean }) => (
     <Pressable style={[styles.devButton, accent && styles.devButtonAccent]} onPress={onPress}>
@@ -401,6 +436,11 @@ function DevPanel({
         <Btn label="×1.5 DMG" onPress={() => game.applyEffect({ kind: 'damage', multiplier: 1.5 })} />
         <Btn label="Boss ×20" onPress={bossTest} accent />
         <Btn label="Stress 50/300" onPress={stress} accent />
+      </View>
+      <View style={styles.devRow}>
+        <Btn label="50" onPress={() => setSquad(50)} />
+        <Btn label="Off-axis wall" onPress={offAxis} />
+        <Btn label="Lane crosser" onPress={crosser} />
       </View>
       <View style={styles.devRow}>
         <Btn

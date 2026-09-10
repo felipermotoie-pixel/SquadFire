@@ -6,8 +6,8 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 
 - Workflow `artifacts/squadfire-mobile: expo` — Expo dev server (Expo Go + web preview). Web needs WebGL.
 - `pnpm --filter @workspace/squadfire-mobile run typecheck` — TypeScript for the game.
-- `pnpm --filter @workspace/squadfire-mobile run test:sim` — headless simulation/firing tests (27 checks, incl. brief §44 acceptance, perf sweeps and a 500-projectile stress case).
-- `pnpm --filter @workspace/squadfire-mobile run render:preview` — renders 5 scenario PNGs to `/tmp/squadfire-preview/` through CanvasKit; use this for visual review when a screenshot tool lacks WebGL.
+- `pnpm --filter @workspace/squadfire-mobile run test:sim` — headless simulation/firing tests (37 checks: straight-fire Tests A–E, boss/enemy honesty, formation alignment 1–50, cadence, brief §44 acceptance, perf sweeps and a 500-projectile stress case).
+- `pnpm --filter @workspace/squadfire-mobile run render:preview` — renders 12 scenario PNGs (incl. alignment at 1/5/10/25/50 and the off-axis miss) to `/tmp/squadfire-preview/` through CanvasKit; use this for visual review when a screenshot tool lacks WebGL.
 - `pnpm run typecheck` — full workspace typecheck.
 - The `api-server` / `api-spec` / `db` packages are the untouched monorepo template; the game is fully client-side (no `DATABASE_URL` needed).
 
@@ -19,7 +19,7 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 
 ## Where things live
 
-- `artifacts/squadfire-mobile/game/` — pure TS simulation (`engine.ts` = `Game` class; `balance.ts` = all tuning; `targeting.ts`, `formation.ts`, `camera.ts`, `visuals.ts` sprite metadata, `sprite-geometry.ts` shared draw/muzzle geometry, `audio.ts` shot aggregation hook, `tests/`).
+- `artifacts/squadfire-mobile/game/` — pure TS simulation (`engine.ts` = `Game` class; `balance.ts` = all tuning incl. the `ROAD_FORWARD`/`ROAD_RIGHT` basis; `formation.ts`, `camera.ts`, `visuals.ts` sprite metadata, `sprite-geometry.ts` shared draw/muzzle geometry, `audio.ts` shot aggregation hook, `tests/`).
 - `components/battlefield/` — `SceneRenderer.ts` (imperative Skia frame), `Battlefield.tsx` (canvas + rAF loop), `palette.ts`.
 - `components/GameScreen.tsx` — HUD, drag input, pause/end cards, dev panel (`__DEV__`).
 - `app/index.tsx` (native) / `app/index.web.tsx` (web, `WithSkiaWeb` lazy import).
@@ -32,7 +32,9 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 - Whole battlefield is one Skia `<Canvas>` with a `<Picture>` re-recorded each frame from a rAF loop; React never re-renders per frame. HUD syncs at ~8 Hz via `onSync`.
 - Simulation is deterministic (seeded RNG, fixed 1/120 s substeps) and has no React/Skia imports so it runs headless in Node for tests.
 - One soldier = one muzzle = one ShotEvent = one projectile. Squad size is applied exactly once (as shooter count); damage/fire-rate come only from capped gate multipliers.
-- Sprite geometry and rotation are shared by sim and renderer so projectiles always leave the drawn muzzle.
+- **Straight fire (v0.3.0):** no auto-targeting anywhere. Every projectile leaves its muzzle along `ROAD_FORWARD`; the drag is the aim; damage is collision-only; enemies/boss never drift toward the squad. Do not reintroduce target lookup, aim assist, or homing.
+- Soldiers always face the vanishing point; sprite heading is never derived from drag/target/slot. Asset tilt is corrected with `baseVisualRotationOffset` in `visuals.ts`, never by rotating the formation. Formation = straight symmetric block, 5-column width cap, rows added behind.
+- Sprite geometry is shared by sim and renderer so projectiles always leave the drawn muzzle.
 - World units: x in road half-widths (±1 = barriers), y forward (0 squad line, 6 spawn), perspective camera in `game/camera.ts`.
 
 ## Product
@@ -43,7 +45,7 @@ Single stage vertical slice: waves of grunts/elites, three gate pairs, boss with
 
 - Single Expo mobile artifact; keep HUD minimal, no debug text in gameplay (dev-only overlay is fine).
 - Always create a git checkpoint/tag before large reworks and a semantic version tag after; never overwrite tags.
-- Stop after delivering the requested scope; do not start Shop/economy/campaign work unasked.
+- Stop after delivering the requested scope; do not start Shop/economy/campaign work unasked. Phase B (intro cinematic + main menu, v0.4.0) only starts on explicit instruction.
 
 ## Gotchas
 

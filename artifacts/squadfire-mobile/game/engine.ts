@@ -3,8 +3,11 @@
  * agnostic. The host (React/Skia on device, Node in the headless test) calls
  * `game.advance(dtSeconds)` once per frame and reads the public arrays to render.
  *
- * Core combat rule (non-negotiable):
+ * Core combat rules (non-negotiable):
  *   individual soldier → individual muzzle → individual ShotEvent → individual projectile
+ *   STRAIGHT FIRE: every projectile leaves its muzzle along ROAD_FORWARD. Nothing in
+ *   the simulation looks up, tracks, or steers toward a target. Damage happens only
+ *   when a projectile physically crosses a hitbox. The player aims by moving the squad.
  */
 import {
   BOSS,
@@ -12,17 +15,16 @@ import {
   GATES,
   MODIFIER_CAPS,
   PROJECTILES,
+  ROAD_FORWARD,
   ROAD_LENGTH,
   SIM,
   SQUAD,
-  TARGETING,
   VFX,
   WEAPONS,
 } from './balance';
-import { createCamera, project, unitPx, type CameraLayout } from './camera';
-import { formationSlots } from './formation';
+import { createCamera, project, type CameraLayout } from './camera';
+import { anchorLimitFor, formationSlots } from './formation';
 import { emptyFrame, spriteFrame } from './sprite-geometry';
-import { resolveTarget } from './targeting';
 import type {
   Boss,
   DamagePopup,
@@ -38,11 +40,10 @@ import type {
   Projectile,
   ShotEvent,
   Soldier,
-  TargetKind,
   VfxKind,
   VfxParticle,
 } from './types';
-import { BOSS_VISUAL, ENEMY_ELITE_VISUAL, ENEMY_GRUNT_VISUAL, PLAYER_SOLDIER_VISUAL, SOLDIER_BARREL_ANGLE, soldierSpriteRotation } from './visuals';
+import { BOSS_VISUAL, ENEMY_ELITE_VISUAL, ENEMY_GRUNT_VISUAL, PLAYER_SOLDIER_VISUAL } from './visuals';
 
 export type ShotListener = (shot: ShotEvent) => void;
 
@@ -130,7 +131,7 @@ export class Game {
   private shotListeners: ShotListener[] = [];
   private buckets: Enemy[][] = [];
   private frame = emptyFrame();
-  private scratchTarget = { kind: null as TargetKind, id: null as number | null };
+  private scratchProjected = { x: 0, y: 0, scale: 1 };
 
   constructor(opts: GameOptions = {}) {
     this.rng = mulberry32(opts.seed ?? 1337);
@@ -163,8 +164,19 @@ export class Game {
     };
   }
 
+  /**
+   * Player input: desired lateral position of the squad anchor. This is the ONLY
+   * aiming control in the game — soldiers fire straight ahead from wherever they
+   * stand, so moving the squad moves the fire lanes.
+   */
   setInputX(worldX: number): void {
-    this.targetAnchorX = clamp(worldX, -SQUAD.anchorLimit, SQUAD.anchorLimit);
+    const limit = anchorLimitFor(this.squadSize);
+    this.targetAnchorX = clamp(worldX, -limit, limit);
+  }
+
+  /** Current lateral clamp for the anchor (shrinks as the formation gets wider). */
+  get anchorLimit(): number {
+    return anchorLimitFor(this.squadSize);
   }
 
   pause(): void {
@@ -232,13 +244,8 @@ export class Game {
         alive: true,
         pos: { x: this.anchorX + (this.rng() - 0.5) * 0.3, y: -0.9 - this.rng() * 0.3 },
         slot: { x: 0, y: 0 },
-        aimAngle: 0,
-        aimDir: { x: 0, y: 1 },
-        targetId: null,
-        targetKind: null,
         nextShotAt: this.time + firePhase * period,
         firePhase,
-        bossAimOffset: { x: (this.rng() - 0.5) * 0.9, y: 0.45 + this.rng() * 1.1 },
         weaponId: 'rifle',
         animPhase: this.rng() * Math.PI * 2,
         recoil: 0,
@@ -297,6 +304,9 @@ export class Game {
       s.slot.x = slots[i].x;
       s.slot.y = slots[i].y;
     });
+    // A wider block has less room to move; keep the whole formation on the road.
+    const limit = anchorLimitFor(alive.length);
+    this.targetAnchorX = clamp(this.targetAnchorX, -limit, limit);
   }
 
   // ---------------------------------------------------------------------------
@@ -349,7 +359,6 @@ export class Game {
       pos: { x, y },
       hp: def.hp,
       maxHp: def.hp,
-      reserved: 0,
       speed: def.speed * (0.9 + this.rng() * 0.2),
       sizeVariation: 0.92 + this.rng() * 0.16,
       animPhase: this.rng() * Math.PI * 2,
@@ -483,45 +492,11 @@ export class Game {
 
       s.recoil = Math.max(0, s.recoil - dt / 0.11);
 
-      // Target resolution: keep a valid target, re-evaluate periodically.
-      let target = this.lookupTarget(s.targetKind, s.targetId);
-      const aboutToFire = canFire && this.time >= s.nextShotAt;
-      // Re-evaluate periodically, and right before a shot if the current target's
-      // remaining HP is already covered by projectiles in flight (overkill guard).
-      const needsReacquire =
-        !target ||
-        (s.firePhase + this.time) % TARGETING.reacquireInterval < dt ||
-        (aboutToFire && target.enemy !== null && target.enemy.reserved >= target.enemy.hp);
-      if (needsReacquire) {
-        const res = resolveTarget(s, this.enemies, this.boss, this.scratchTarget);
-        s.targetKind = res.kind;
-        s.targetId = res.id;
-        target = this.lookupTarget(res.kind, res.id);
-      }
-
-      if (!target) {
-        s.aimAngle += (0 - s.aimAngle) * Math.min(1, 6 * dt);
-        // Keep the cadence distributed while idle: never let every timer expire together.
-        if (this.time >= s.nextShotAt) s.nextShotAt = this.time + s.firePhase * period;
-        continue;
-      }
-
-      // Aim: sprite rotation toward the target's projected aim point.
-      const aim = this.aimPointOf(s, target.kind, target.enemy, target.isBoss);
-      const frame = spriteFrame(this.cam, PLAYER_SOLDIER_VISUAL, s.pos.x, s.pos.y, 0, 1, this.frame);
-      const tp = project(this.cam, aim.x, aim.y);
-      const tpy = tp.y - aim.h * unitPx(this.cam, aim.y);
-      const desired = clamp(Math.atan2(tp.x - frame.pivotX, frame.pivotY - tpy), -0.5, 0.5);
-      s.aimAngle += (desired - s.aimAngle) * Math.min(1, 14 * dt);
-      const dx = aim.x - s.pos.x;
-      const dy = aim.y - s.pos.y;
-      const len = Math.hypot(dx, dy) || 1;
-      s.aimDir.x = dx / len;
-      s.aimDir.y = dy / len;
-
-      if (aboutToFire) {
-        this.fireShot(s, aim, target.kind, target.id);
-        // Next shot exactly one period later. Catch up at most one period if the
+      // Continuous straight fire on the soldier's own timer. No target lookup, no
+      // idle state: the timer never waits for an enemy and never re-phases.
+      if (canFire && this.time >= s.nextShotAt) {
+        this.fireShot(s);
+        // Next shot exactly one period later. Catch up at most half a period if the
         // frame was long, so cadence stays stable without bursts.
         s.nextShotAt = Math.max(s.nextShotAt + period, this.time + period * 0.5);
       }
@@ -533,68 +508,42 @@ export class Game {
     }
   }
 
-  // Scratch objects reused every substep (no allocations in the soldier loop).
-  private scratchLookup: { kind: TargetKind; id: number; enemy: Enemy | null; isBoss: boolean } = { kind: null, id: 0, enemy: null, isBoss: false };
-  private scratchAim = { x: 0, y: 0, h: 0 };
-
-  private lookupTarget(kind: TargetKind, id: number | null): { kind: TargetKind; id: number; enemy: Enemy | null; isBoss: boolean } | null {
-    const out = this.scratchLookup;
-    if (kind === 'boss') {
-      if (this.boss.active && this.boss.alive && this.boss.death === 0) {
-        out.kind = kind;
-        out.id = 0;
-        out.enemy = null;
-        out.isBoss = true;
-        return out;
-      }
-      return null;
-    }
-    if (kind === 'enemy' && id !== null) {
-      const e = this.enemyById.get(id);
-      if (e && e.alive && e.death === 0) {
-        out.kind = kind;
-        out.id = id;
-        out.enemy = e;
-        out.isBoss = false;
-        return out;
-      }
-    }
-    return null;
-  }
-
-  private aimPointOf(s: Soldier, kind: TargetKind, enemy: Enemy | null, isBoss: boolean): { x: number; y: number; h: number } {
-    const out = this.scratchAim;
-    if (isBoss) {
-      out.x = this.boss.pos.x + s.bossAimOffset.x;
-      out.y = this.boss.pos.y;
-      out.h = s.bossAimOffset.y;
-      return out;
-    }
-    const e = enemy as Enemy;
-    const vis = e.kind === 'elite' ? ENEMY_ELITE_VISUAL : ENEMY_GRUNT_VISUAL;
-    out.x = e.pos.x;
-    out.y = e.pos.y;
-    out.h = vis.height * e.sizeVariation * vis.aimHeightFraction;
+  /**
+   * World-space muzzle of a soldier: lateral position and height are read back from
+   * the drawn sprite frame, so projectiles always leave the drawn barrel tip.
+   * Shared by the simulation (spawn) and the debug overlay (muzzle markers).
+   */
+  muzzleOf(s: Soldier, out: { x: number; y: number; h: number }): { x: number; y: number; h: number } {
+    const frame = spriteFrame(this.cam, PLAYER_SOLDIER_VISUAL, s.pos.x, s.pos.y, PLAYER_SOLDIER_VISUAL.baseVisualRotationOffset, 1, this.frame);
+    out.x = (frame.muzzleX - this.cam.centerX) / (this.cam.halfWidthBase * frame.scale);
+    out.y = s.pos.y + 0.03;
+    out.h = Math.max(0.05, (frame.footY - frame.muzzleY) / frame.unit);
     return out;
   }
 
+  private scratchMuzzle = { x: 0, y: 0, h: 0 };
+
   /**
    * ONE ShotEvent drives everything: projectile spawn, muzzle flash, recoil pose,
-   * audio hook, statistics. Origin is the soldier's own weapon muzzle.
+   * audio hook, statistics. Origin is the soldier's own weapon muzzle; direction is
+   * ROAD_FORWARD (plus the weapon's configured spread, 0 for the rifle). The
+   * projectile is fully independent once spawned.
    */
-  private fireShot(s: Soldier, aim: { x: number; y: number; h: number }, kind: TargetKind, targetId: number): void {
+  private fireShot(s: Soldier): void {
     const weapon = WEAPONS[s.weaponId];
-    const frame = spriteFrame(this.cam, PLAYER_SOLDIER_VISUAL, s.pos.x, s.pos.y, soldierSpriteRotation(s.aimAngle), 1, this.frame);
-    // Convert the drawn muzzle position back to world: lateral from screen x, height from screen y.
-    const originX = (frame.muzzleX - this.cam.centerX) / (this.cam.halfWidthBase * frame.scale);
-    const originY = s.pos.y + 0.03;
-    const originH = Math.max(0.05, (frame.footY - frame.muzzleY) / frame.unit);
+    const m = this.muzzleOf(s, this.scratchMuzzle);
+    const originX = m.x;
+    const originY = m.y;
+    const originH = m.h;
 
-    const dx = aim.x - originX;
-    const dy = aim.y - originY;
-    const dist = Math.hypot(dx, dy) || 0.001;
-    const dirX = dx / dist;
-    const dirY = dy / dist;
+    let dirX = ROAD_FORWARD.x;
+    let dirY = ROAD_FORWARD.y;
+    if (weapon.spread > 0) {
+      dirX += (this.rng() * 2 - 1) * weapon.spread;
+      const len = Math.hypot(dirX, dirY);
+      dirX /= len;
+      dirY /= len;
+    }
 
     const p = this.acquireProjectile();
     if (!p) return;
@@ -603,40 +552,34 @@ export class Game {
     p.weaponId = s.weaponId;
     p.x = originX;
     p.y = originY;
+    p.originX = originX;
+    p.originY = originY;
     p.vx = dirX * weapon.projectileSpeed;
     p.vy = dirY * weapon.projectileSpeed;
-    p.h0 = originH;
-    p.h1 = aim.h;
-    p.planned = dist;
+    p.h = originH;
     p.traveled = 0;
     p.damage = weapon.damage * this.mods.damage;
-    p.targetId = targetId;
-    p.targetKind = kind;
     p.spawnTime = this.time;
     p.lifetime = PROJECTILES.lifetime;
-
-    // Reserve damage for overkill reduction.
-    if (kind === 'boss') this.boss.reserved += p.damage;
-    else {
-      const e = this.enemyById.get(targetId);
-      if (e) e.reserved += p.damage;
-    }
 
     s.recoil = weapon.recoil;
     s.shotsFired++;
     this.stats.shotsFired++;
     this.shotTimes.push(this.time);
 
-    // Muzzle flash sits exactly at the muzzle, oriented along the aim.
-    const screenAngle = soldierSpriteRotation(s.aimAngle) + SOLDIER_BARREL_ANGLE;
+    // Muzzle flash sits exactly at the muzzle, oriented along the projected forward
+    // direction (which leans toward the vanishing point for off-center soldiers).
+    const p0 = project(this.cam, originX, originY, this.scratchProjected);
+    const p0x = p0.x;
+    const p0y = p0.y;
+    const p1 = project(this.cam, originX + dirX * 0.6, originY + dirY * 0.6, this.scratchProjected);
+    const screenAngle = Math.atan2(p1.x - p0x, p0y - p1.y);
     this.spawnVfx('muzzle', originX, originY, originH, screenAngle, 1);
 
     if (this.shotListeners.length > 0) {
       const shot: ShotEvent = {
         soldierId: s.id,
         weaponId: s.weaponId,
-        targetId,
-        targetKind: kind,
         origin: { x: originX, y: originY },
         originHeight: originH,
         direction: { x: dirX, y: dirY },
@@ -654,17 +597,7 @@ export class Game {
     // Pool exhausted: recycle the oldest projectile (keeps the per-soldier rule intact).
     let oldest = pool[0];
     for (let i = 1; i < pool.length; i++) if (pool[i].spawnTime < oldest.spawnTime) oldest = pool[i];
-    this.releaseReservation(oldest);
     return oldest;
-  }
-
-  private releaseReservation(p: Projectile): void {
-    if (!p.active) return;
-    if (p.targetKind === 'boss') this.boss.reserved = Math.max(0, this.boss.reserved - p.damage);
-    else if (p.targetId !== null) {
-      const e = this.enemyById.get(p.targetId);
-      if (e) e.reserved = Math.max(0, e.reserved - p.damage);
-    }
   }
 
   private updateProjectiles(dt: number): void {
@@ -707,28 +640,29 @@ export class Game {
       }
       if (hit) {
         this.damageEnemy(hit, p);
-        this.releaseReservation(p);
         p.active = false;
         continue;
       }
 
+      // The boss is never aimed at; it is hit only when its hitbox crosses a lane.
       if (bossTargetable) {
         const ddx = boss.pos.x - p.x;
         const ddy = boss.pos.y - p.y;
         if ((ddx < 0 ? -ddx : ddx) <= BOSS.hitRadius && (ddy < 0 ? -ddy : ddy) <= BOSS.depthTolerance) {
           this.damageBoss(p);
-          this.releaseReservation(p);
           p.active = false;
           continue;
         }
       }
 
+      // Missed bullets keep flying until they time out or leave the road. There is
+      // no "planned distance": nothing about a projectile depends on a target.
       const expired =
-        this.time - p.spawnTime > p.lifetime || p.y > ROAD_LENGTH + 0.6 || p.x < -1.6 || p.x > 1.6 || p.traveled > p.planned + 1.4;
-      if (expired) {
-        this.releaseReservation(p);
-        p.active = false;
-      }
+        this.time - p.spawnTime > p.lifetime ||
+        p.y > ROAD_LENGTH + PROJECTILES.farExit ||
+        p.x < -PROJECTILES.sideExit ||
+        p.x > PROJECTILES.sideExit;
+      if (expired) p.active = false;
     }
   }
 
@@ -737,7 +671,7 @@ export class Game {
     e.hitFlash = 0.08;
     e.lastHitDir = p.vx >= 0 ? 1 : -1;
     this.stats.hits++;
-    const h = p.h0 + (p.h1 - p.h0) * Math.min(1, p.traveled / p.planned);
+    const h = p.h;
     this.spawnVfx('impact', p.x, e.pos.y - 0.05, h, Math.atan2(p.vx, p.vy), e.kind === 'elite' ? 1.2 : 1);
     if (e.hp <= 0) {
       e.death = 0.0001;
@@ -753,7 +687,7 @@ export class Game {
     b.hp -= p.damage;
     b.hitFlash = 0.06;
     this.stats.hits++;
-    const h = p.h0 + (p.h1 - p.h0) * Math.min(1, p.traveled / p.planned);
+    const h = p.h;
     this.spawnVfx('impact-boss', p.x, b.pos.y - 0.1, h, Math.atan2(p.vx, p.vy), 1);
     if (this.stats.hits % 6 === 0) this.spawnPopup(p.x, b.pos.y, h + 0.2, Math.round(p.damage * 6), false);
     if (b.phase === 1 && b.hp <= b.maxHp * 0.5) {
@@ -772,7 +706,6 @@ export class Game {
 
   private updateEnemies(dt: number): void {
     let removed = false;
-    const anchorX = this.anchorX;
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       if (!e.alive) continue;
@@ -787,9 +720,10 @@ export class Game {
       }
       if (this.phase !== 'playing') continue;
       e.pos.y -= e.speed * dt;
-      // Gentle lateral life: wander + slight pressure toward the squad.
+      // Gentle lateral wander only. Enemies never drift toward the squad: if the
+      // player parks the fire lanes off-axis, the enemies walk past them.
       e.wanderPhase += dt * 1.7;
-      const drift = Math.sin(e.wanderPhase) * 0.06 + (anchorX - e.pos.x) * 0.03;
+      const drift = Math.sin(e.wanderPhase) * 0.06;
       e.pos.x = clamp(e.pos.x + drift * dt, -0.95, 0.95);
 
       if (e.pos.y <= ENEMIES.contactY) {
@@ -823,12 +757,25 @@ export class Game {
 
     if (b.pos.y > BOSS.holdY) {
       b.pos.y = Math.max(BOSS.holdY, b.pos.y - BOSS.approachSpeed * dt);
-    } else {
-      // Track the squad laterally, slowly.
-      b.targetX = clamp(this.anchorX * 0.8, -0.5, 0.5);
-      const step = BOSS.lateralSpeed * dt;
-      const diff = b.targetX - b.pos.x;
-      b.pos.x += Math.abs(diff) < step ? diff : Math.sign(diff) * step;
+    } else if (b.telegraph <= 0) {
+      // Slow bounded patrol with dwell. Independent of the squad position: the
+      // player has to bring the lanes to the boss, not the other way round.
+      if (b.patrolDwell > 0) {
+        b.patrolDwell -= dt;
+      } else {
+        const step = BOSS.patrolSpeed * dt;
+        const diff = b.patrolTargetX - b.pos.x;
+        if (Math.abs(diff) <= step) {
+          b.pos.x = b.patrolTargetX;
+          b.patrolDwell = BOSS.patrolDwellMin + this.rng() * (BOSS.patrolDwellMax - BOSS.patrolDwellMin);
+          // Next waypoint at least a third of the range away so the boss actually moves.
+          let next = (this.rng() * 2 - 1) * BOSS.patrolRange;
+          if (Math.abs(next - b.pos.x) < BOSS.patrolRange / 3) next = -Math.sign(b.pos.x || 1) * BOSS.patrolRange * (0.5 + this.rng() * 0.5);
+          b.patrolTargetX = clamp(next, -BOSS.patrolRange, BOSS.patrolRange);
+        } else {
+          b.pos.x += Math.sign(diff) * step;
+        }
+      }
     }
 
     if (b.telegraph > 0) {
@@ -1042,14 +989,14 @@ function createBoss(): Boss {
     pos: { x: 0, y: BOSS.spawnY },
     hp: BOSS.hp,
     maxHp: BOSS.hp,
-    reserved: 0,
     age: 0,
     hitFlash: 0,
     telegraph: 0,
     nextAttackIn: BOSS.attackInterval,
     phase: 1,
     death: 0,
-    targetX: 0,
+    patrolTargetX: 0.35,
+    patrolDwell: 0,
   };
 }
 
@@ -1062,13 +1009,11 @@ function createProjectile(): Projectile {
     y: 0,
     vx: 0,
     vy: 0,
-    h0: 0,
-    h1: 0,
-    planned: 1,
+    h: 0,
+    originX: 0,
+    originY: 0,
     traveled: 0,
     damage: 0,
-    targetId: null,
-    targetKind: null,
     spawnTime: 0,
     lifetime: 1,
   };

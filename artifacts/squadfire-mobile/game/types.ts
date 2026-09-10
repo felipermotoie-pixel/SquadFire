@@ -18,8 +18,17 @@ export interface Vec2 {
 
 export type WeaponId = 'rifle';
 
+/**
+ * STRAIGHT: the only aim mode. Shots leave the muzzle along ROAD_FORWARD and the
+ * player aims by moving the squad. There is no target lookup of any kind.
+ */
+export type AimMode = 'STRAIGHT';
+
 export interface WeaponDefinition {
   id: WeaponId;
+  aimMode: AimMode;
+  /** Lateral spread in world units per forward unit (0 = perfectly parallel lanes). */
+  spread: number;
   /** Shots per second per soldier before fire-rate modifiers. */
   fireRate: number;
   /** Damage per projectile before damage modifiers. */
@@ -41,18 +50,10 @@ export interface Soldier {
   pos: Vec2;
   /** Formation slot relative to the squad anchor (x is absolute after anchor is applied). */
   slot: Vec2;
-  /** Screen-space aim angle (radians, 0 = straight ahead) — drives sprite rotation. */
-  aimAngle: number;
-  /** Ground-plane aim direction toward the current target. */
-  aimDir: Vec2;
-  targetId: number | null;
-  targetKind: TargetKind;
   /** Timestamp (seconds) at which this soldier is allowed to fire next. */
   nextShotAt: number;
   /** Normalized fire phase in [0, 1). Used to keep the cadence distributed. */
   firePhase: number;
-  /** Per-soldier per-boss aim offset so 20 bullets do not converge on one pixel. */
-  bossAimOffset: Vec2;
   weaponId: WeaponId;
   /** Animation phase offset so soldiers do not run in lockstep. */
   animPhase: number;
@@ -65,8 +66,6 @@ export interface Soldier {
   shotsFired: number;
 }
 
-export type TargetKind = 'enemy' | 'boss' | null;
-
 export type EnemyKind = 'grunt' | 'elite';
 
 export interface Enemy {
@@ -76,8 +75,6 @@ export interface Enemy {
   pos: Vec2;
   hp: number;
   maxHp: number;
-  /** Damage already committed by in-flight projectiles (overkill reduction). */
-  reserved: number;
   speed: number;
   /** Visual scale multiplier applied on top of perspective (small crowd variety). */
   sizeVariation: number;
@@ -98,7 +95,6 @@ export interface Boss {
   pos: Vec2;
   hp: number;
   maxHp: number;
-  reserved: number;
   /** Seconds since spawn. */
   age: number;
   hitFlash: number;
@@ -109,8 +105,10 @@ export interface Boss {
   /** Phase 1 or 2 (phase 2 starts at 50% HP). */
   phase: 1 | 2;
   death: number;
-  /** Lateral movement target. */
-  targetX: number;
+  /** Current patrol waypoint (lateral). Chosen at random inside ±BOSS.patrolRange. */
+  patrolTargetX: number;
+  /** Seconds left to stand still before walking to the next waypoint. */
+  patrolDwell: number;
 }
 
 export interface Projectile {
@@ -119,17 +117,16 @@ export interface Projectile {
   weaponId: WeaponId;
   x: number;
   y: number;
+  /** Velocity in the road basis. Fixed at spawn; never steered afterwards. */
   vx: number;
   vy: number;
-  /** Height above the ground at spawn (muzzle) and at the aim point. */
-  h0: number;
-  h1: number;
-  /** Total planned travel distance from muzzle to aim point. */
-  planned: number;
+  /** Flight height above the road (constant = muzzle height). */
+  h: number;
+  /** Ground origin (for the debug path overlay). */
+  originX: number;
+  originY: number;
   traveled: number;
   damage: number;
-  targetId: number | null;
-  targetKind: TargetKind;
   spawnTime: number;
   lifetime: number;
 }
@@ -137,13 +134,11 @@ export interface Projectile {
 export interface ShotEvent {
   soldierId: number;
   weaponId: WeaponId;
-  targetId: number | null;
-  targetKind: TargetKind;
   /** Ground-plane origin (world) */
   origin: Vec2;
   /** Height of the muzzle above the ground (world units). */
   originHeight: number;
-  /** Ground-plane direction (normalized). */
+  /** Ground-plane direction (normalized). Always ROAD_FORWARD (plus weapon spread). */
   direction: Vec2;
   timestamp: number;
 }

@@ -15,8 +15,8 @@ Expo (SDK 57) portrait mobile squad shooter. One artifact: `artifacts/squadfire-
 ## Data flow per frame
 
 1. `Battlefield` rAF tick → `game.advance(dt)` (clamped, split into fixed substeps).
-2. Engine updates: input/anchor → formation slots → soldiers (aim, cadence, `fireShot`) → projectiles → enemies/boss → gates → VFX/popups → wave director → stats.
-3. Each `fireShot` creates one `ShotEvent` (soldier id, muzzle world position, direction, target). The event spawns a projectile, muzzle flash VFX, recoil, and is forwarded to `onShot` (audio hook / tests).
+2. Engine updates: input/anchor → formation slots → soldiers (cadence, `fireShot` straight along `ROAD_FORWARD`) → projectiles (grid collision) → enemies/boss → gates → VFX/popups → wave director → stats.
+3. Each `fireShot` creates one `ShotEvent` (soldier id, muzzle world position, direction = road forward). The event spawns a projectile, muzzle flash VFX, recoil, and is forwarded to `onShot` (audio hook / tests). There is no targeting module.
 4. Renderer records a `SkPicture` from the game state; the shared value swap redraws the canvas without a React render.
 5. Every ~120 ms (or immediately when events are pending) `onSync(game)` lets the HUD drain events and refresh its state.
 

@@ -76,6 +76,32 @@ const scenarios: Scenario[] = [
       g.setSquadSize(10);
     },
   },
+  // Straight-fire alignment checks: static squads at 1/5/10/25/50, no enemies,
+  // debug overlay on so lanes, forward vectors and muzzle points are visible.
+  ...[1, 5, 10, 25, 50].map((n) => ({
+    name: `07-alignment-${String(n).padStart(2, '0')}`,
+    seconds: 2.6,
+    debug: true,
+    setup: (g: Game) => {
+      g.scripted = true;
+      g.setSquadSize(n);
+    },
+  })),
+  {
+    // Test B in pictures: squad parked left, enemy wall on the right — lanes miss.
+    name: '08-off-axis-miss',
+    seconds: 3,
+    debug: true,
+    setup: (g) => {
+      g.scripted = true;
+      g.setSquadSize(10);
+      g.setInputX(-0.45);
+      for (let i = 0; i < 6; i++) {
+        const e = g.spawnEnemy('grunt', 0.55 + (i % 3) * 0.15, 2.6 + Math.floor(i / 3) * 0.5);
+        e.speed = 0;
+      }
+    },
+  },
 ];
 
 function main() {

@@ -28,7 +28,7 @@ import {
   type SkShader,
 } from '@shopify/react-native-skia';
 
-import { BOSS, GATES, ROAD_LENGTH } from '@/game/balance';
+import { BOSS, ENEMIES, GATES, ROAD_FORWARD, ROAD_LENGTH, ROAD_RIGHT } from '@/game/balance';
 
 /** How far (world units) the causeway is drawn toward the horizon. Gameplay stays within ROAD_LENGTH. */
 const ROAD_FAR = 40;
@@ -37,7 +37,7 @@ import { project, unitPx, type CameraLayout } from '@/game/camera';
 import { gateBigNumber, gateSmallLabel, type Game } from '@/game/engine';
 import { emptyFrame, spriteFrame, type SpriteFrame } from '@/game/sprite-geometry';
 import type { Enemy, Gate, Soldier } from '@/game/types';
-import { BOSS_VISUAL, ENEMY_ELITE_VISUAL, ENEMY_GRUNT_VISUAL, PLAYER_SOLDIER_VISUAL, soldierSpriteRotation } from '@/game/visuals';
+import { BOSS_VISUAL, ENEMY_ELITE_VISUAL, ENEMY_GRUNT_VISUAL, PLAYER_SOLDIER_VISUAL } from '@/game/visuals';
 import { PALETTE } from './palette';
 
 export interface SceneAssets {
@@ -118,6 +118,7 @@ export class SceneRenderer {
   private renderables: Renderable[] = [];
   private renderablePool: Renderable[] = [];
   private frame: SpriteFrame = emptyFrame();
+  private debugMuzzle = { x: 0, y: 0, h: 0 };
   private scroll = 0;
   private lastTime = 0;
 
@@ -598,7 +599,9 @@ export class SceneRenderer {
 
   private drawSoldier(canvas: SkCanvas, game: Game, s: Soldier, t: number): void {
     const cam = game.cam;
-    const rotation = soldierSpriteRotation(s.aimAngle);
+    // Soldiers always face ROAD_FORWARD. The only rotation is the asset's local
+    // correction — never anything derived from input, targets or formation slots.
+    const rotation = PLAYER_SOLDIER_VISUAL.baseVisualRotationOffset;
     const frame = spriteFrame(cam, PLAYER_SOLDIER_VISUAL, s.pos.x, s.pos.y, rotation, 1, this.frame);
     const cycle = t * 12 + s.animPhase;
     const run = Math.sin(cycle);
@@ -887,19 +890,17 @@ export class SceneRenderer {
     for (const p of game.projectiles) {
       if (!p.active) continue;
       any = true;
-      const k = Math.min(1, p.traveled / p.planned);
-      const h = p.h0 + (p.h1 - p.h0) * k;
+      // Constant flight height; the tail is a short segment back along the velocity.
+      const h = p.h;
       const head = project(cam, p.x, p.y);
       const hu = unitPx(cam, p.y);
-      const tailLen = 0.05;
+      const tailLen = Math.min(0.05, p.traveled / Math.max(1e-6, Math.hypot(p.vx, p.vy)));
       const tx = p.x - p.vx * tailLen;
       const ty = p.y - p.vy * tailLen;
-      const kt = Math.max(0, p.traveled - Math.hypot(p.vx, p.vy) * tailLen) / p.planned;
-      const ht = p.h0 + (p.h1 - p.h0) * Math.min(1, kt);
       const tail = project(cam, tx, ty);
       const tu = unitPx(cam, ty);
       const path = head.scale > 0.5 ? near : far;
-      path.moveTo(tail.x, tail.y - ht * tu);
+      path.moveTo(tail.x, tail.y - h * tu);
       path.lineTo(head.x, head.y - h * hu);
     }
     if (!any) return;
@@ -1191,25 +1192,57 @@ export class SceneRenderer {
     const p = this.paint;
     const font = this.assets.smallFont;
     s.setStrokeWidth(1);
+
+    // Canonical road basis, drawn at the squad anchor: ROAD_FORWARD (green, toward
+    // the vanishing point) and ROAD_RIGHT (white). Every soldier's body forward
+    // vector and every projectile vector must be parallel to the green one.
+    {
+      const a0 = project(cam, game.anchorX, 0);
+      const af = project(cam, game.anchorX + ROAD_FORWARD.x * 1.2, ROAD_FORWARD.y * 1.2);
+      const ar = project(cam, game.anchorX + ROAD_RIGHT.x * 0.6, ROAD_RIGHT.y * 0.6);
+      s.setStrokeWidth(2);
+      s.setColor(Skia.Color(PALETTE.debug));
+      canvas.drawLine(a0.x, a0.y, af.x, af.y, s);
+      s.setColor(Skia.Color('rgba(255,255,255,0.8)'));
+      canvas.drawLine(a0.x, a0.y, ar.x, ar.y, s);
+      s.setStrokeWidth(1);
+      // Anchor clamp range for the current squad width.
+      const lim = game.anchorLimit;
+      const l0 = project(cam, -lim, 0);
+      const l1 = project(cam, lim, 0);
+      s.setColor(Skia.Color('rgba(255,255,255,0.35)'));
+      canvas.drawLine(l0.x, l0.y + 6, l1.x, l1.y + 6, s);
+      canvas.drawLine(l0.x, l0.y, l0.x, l0.y + 12, s);
+      canvas.drawLine(l1.x, l1.y, l1.x, l1.y + 12, s);
+      if (font) {
+        this.textPaint.setColor(Skia.Color(PALETTE.debugText));
+        canvas.drawText(`roadForward`, af.x + 4, af.y, this.textPaint, font);
+        canvas.drawText(`roadRight  anchor ${game.anchorX.toFixed(2)} / ±${lim.toFixed(2)}`, ar.x + 4, ar.y + 4, this.textPaint, font);
+      }
+    }
+
+    // Per soldier: body forward vector, muzzle point, fire-lane line, sprite bounds, timers.
+    const laneTop = project(cam, 0, ROAD_LENGTH).y;
     for (const sol of game.soldiers) {
       if (!sol.alive) continue;
-      const rotation = soldierSpriteRotation(sol.aimAngle);
-      const frame = spriteFrame(cam, PLAYER_SOLDIER_VISUAL, sol.pos.x, sol.pos.y, rotation, 1, this.frame);
-      // Aim vector to the target.
-      const target = sol.targetKind === 'boss' ? game.boss.pos : game.enemies.find((e) => e.id === sol.targetId)?.pos;
-      if (target) {
-        const tp = project(cam, target.x, target.y);
-        s.setColor(Skia.Color(PALETTE.debug));
-        s.setAlphaf(0.5);
-        canvas.drawLine(frame.muzzleX, frame.muzzleY, tp.x, tp.y - 0.25 * unitPx(cam, target.y), s);
-        s.setAlphaf(1);
-        s.setColor(Skia.Color(PALETTE.debug));
-        canvas.drawCircle(tp.x, tp.y, 6, s);
-      }
-      // Muzzle anchor.
+      const frame = spriteFrame(cam, PLAYER_SOLDIER_VISUAL, sol.pos.x, sol.pos.y, PLAYER_SOLDIER_VISUAL.baseVisualRotationOffset, 1, this.frame);
+      const m = game.muzzleOf(sol, this.debugMuzzle);
+      // Fire lane: the straight world line this soldier's bullets travel (projected, so it
+      // converges to the vanishing point on screen while staying parallel in the world).
+      const laneEnd = project(cam, m.x, ROAD_LENGTH);
+      s.setColor(Skia.Color(PALETTE.debug));
+      s.setAlphaf(0.28);
+      canvas.drawLine(frame.muzzleX, frame.muzzleY, laneEnd.x, Math.max(laneTop, laneEnd.y), s);
+      s.setAlphaf(1);
+      // Body forward vector from the feet.
+      const bf = project(cam, sol.pos.x + ROAD_FORWARD.x * 0.35, sol.pos.y + ROAD_FORWARD.y * 0.35);
+      s.setStrokeWidth(2);
+      canvas.drawLine(frame.footX, frame.footY, bf.x, bf.y, s);
+      s.setStrokeWidth(1);
+      // Muzzle anchor (drawn frame) — the projectile spawn point.
       p.setColor(Skia.Color(PALETTE.debugMuzzle));
       canvas.drawCircle(frame.muzzleX, frame.muzzleY, 3, p);
-      // Sprite bounds + pivot.
+      // Sprite bounds + foot pivot.
       s.setColor(Skia.Color('rgba(255,255,255,0.35)'));
       canvas.drawRect(Skia.XYWHRect(frame.left, frame.top, frame.width, frame.height), s);
       p.setColor(Skia.Color('#ffffff'));
@@ -1219,13 +1252,53 @@ export class SceneRenderer {
         canvas.drawText(`#${sol.id} φ${sol.firePhase.toFixed(2)} t${sol.nextShotAt.toFixed(2)}`, frame.left, frame.footY + 12, this.textPaint, font);
       }
     }
-    // Enemy hitboxes.
-    s.setColor(Skia.Color('rgba(255,80,80,0.6)'));
+
+    // Projectiles: velocity vector (magenta) + path travelled from the muzzle (faint).
+    for (const pr of game.projectiles) {
+      if (!pr.active) continue;
+      const u = unitPx(cam, pr.y);
+      const head = project(cam, pr.x, pr.y);
+      const hx = head.x;
+      const hy = head.y - pr.h * u;
+      const o = project(cam, pr.originX, pr.originY);
+      s.setColor(Skia.Color(PALETTE.debugMuzzle));
+      s.setAlphaf(0.25);
+      canvas.drawLine(o.x, o.y - pr.h * unitPx(cam, pr.originY), hx, hy, s);
+      s.setAlphaf(1);
+      const ahead = project(cam, pr.x + pr.vx * 0.06, pr.y + pr.vy * 0.06);
+      canvas.drawLine(hx, hy, ahead.x, ahead.y - pr.h * unitPx(cam, pr.y + pr.vy * 0.06), s);
+      p.setColor(Skia.Color(PALETTE.debugMuzzle));
+      canvas.drawCircle(hx, hy, 2, p);
+    }
+
+    // Enemy hitboxes (lateral radius × depth tolerance, as the collision test sees them).
+    s.setColor(Skia.Color('rgba(255,80,80,0.7)'));
     for (const e of game.enemies) {
-      const pr = project(cam, e.pos.x, e.pos.y);
-      const u = unitPx(cam, e.pos.y);
-      const r = (e.kind === 'elite' ? 0.26 : 0.2) * e.sizeVariation * u;
-      canvas.drawOval(Skia.XYWHRect(pr.x - r, pr.y - r * 0.5, r * 2, r), s);
+      if (!e.alive || e.death > 0) continue;
+      const def = ENEMIES[e.kind];
+      const r = def.hitRadius * e.sizeVariation;
+      const a = project(cam, e.pos.x - r, e.pos.y - def.depthTolerance);
+      const b = project(cam, e.pos.x + r, e.pos.y - def.depthTolerance);
+      const c = project(cam, e.pos.x + r, e.pos.y + def.depthTolerance);
+      const d = project(cam, e.pos.x - r, e.pos.y + def.depthTolerance);
+      canvas.drawLine(a.x, a.y, b.x, b.y, s);
+      canvas.drawLine(b.x, b.y, c.x, c.y, s);
+      canvas.drawLine(c.x, c.y, d.x, d.y, s);
+      canvas.drawLine(d.x, d.y, a.x, a.y, s);
+    }
+    if (game.boss.active && game.boss.alive) {
+      const bz = game.boss;
+      const a = project(cam, bz.pos.x - BOSS.hitRadius, bz.pos.y - BOSS.depthTolerance);
+      const b = project(cam, bz.pos.x + BOSS.hitRadius, bz.pos.y - BOSS.depthTolerance);
+      const c = project(cam, bz.pos.x + BOSS.hitRadius, bz.pos.y + BOSS.depthTolerance);
+      const d = project(cam, bz.pos.x - BOSS.hitRadius, bz.pos.y + BOSS.depthTolerance);
+      s.setColor(Skia.Color('rgba(255,160,60,0.8)'));
+      canvas.drawLine(a.x, a.y, b.x, b.y, s);
+      canvas.drawLine(b.x, b.y, c.x, c.y, s);
+      canvas.drawLine(c.x, c.y, d.x, d.y, s);
+      canvas.drawLine(d.x, d.y, a.x, a.y, s);
+      const w = project(cam, bz.patrolTargetX, bz.pos.y);
+      canvas.drawCircle(w.x, w.y, 5, s);
     }
     // Counters.
     if (font) {

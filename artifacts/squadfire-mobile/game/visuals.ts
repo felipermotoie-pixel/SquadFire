@@ -4,8 +4,10 @@
  * perspective scale. Heights are in world units (road half-widths).
  *
  * The renderer places the sprite so that (anchorX, anchorY) lands on the unit's
- * projected ground position. Muzzle/weapon anchors are rotated together with the
- * sprite when a soldier aims, so projectile origins follow the weapon.
+ * projected ground position. Player soldiers are never rotated by gameplay state:
+ * they always face ROAD_FORWARD (the vanishing point). If an asset is authored at
+ * an angle, correct it locally with `baseVisualRotationOffset` — never by turning
+ * the formation, the anchor, or the projectile direction.
  */
 export interface CharacterVisualDefinition {
   visualId: string;
@@ -28,26 +30,35 @@ export interface CharacterVisualDefinition {
   muzzleAnchorY: number;
   /** Aim point other units should shoot at (fraction of height, from the ground). */
   aimHeightFraction: number;
+  /**
+   * Local yaw correction (radians, screen space, positive = clockwise) applied to
+   * the sprite so its body reads as facing straight up the road. 0 for assets that
+   * are already authored facing the vanishing point.
+   */
+  baseVisualRotationOffset: number;
   animationSet: 'soldier' | 'grunt' | 'boss';
 }
 
 export const PLAYER_SOLDIER_VISUAL: CharacterVisualDefinition = {
   visualId: 'soldier-blue',
   height: 0.46,
-  // assets/characters/player/soldier_blue.png is 140x320 (alpha-trimmed).
-  aspect: 0.4375,
-  anchorX: 0.45,
-  anchorY: 0.985,
+  // assets/characters/player/soldier_blue.png is 128x320 (alpha-trimmed): straight
+  // rear view, shoulders square to the camera, rifle vertical above the right shoulder.
+  // Anchors were measured from the alpha mask (see docs/ASSET_PIPELINE.md).
+  aspect: 0.4,
+  anchorX: 0.473,
+  anchorY: 0.99,
   shadowOffsetX: 0,
   shadowOffsetY: 0,
   shadowScale: 0.62,
-  // Rifle grip / stock, upper right of the torso.
-  weaponAnchorX: 0.72,
+  // Rifle grip, above the right shoulder.
+  weaponAnchorX: 0.672,
   weaponAnchorY: 0.3,
-  // Rifle tip: top-right corner of the sprite (barrel points up-right, see SOLDIER_BARREL_ANGLE).
-  muzzleAnchorX: 0.84,
-  muzzleAnchorY: 0.015,
+  // Barrel tip: top edge of the sprite, directly above the grip (vertical barrel = ROAD_FORWARD).
+  muzzleAnchorX: 0.672,
+  muzzleAnchorY: 0.004,
   aimHeightFraction: 0.55,
+  baseVisualRotationOffset: 0,
   animationSet: 'soldier',
 };
 
@@ -66,6 +77,7 @@ export const ENEMY_GRUNT_VISUAL: CharacterVisualDefinition = {
   muzzleAnchorX: 0.95,
   muzzleAnchorY: 0.45,
   aimHeightFraction: 0.55,
+  baseVisualRotationOffset: 0,
   animationSet: 'grunt',
 };
 
@@ -91,18 +103,6 @@ export const BOSS_VISUAL: CharacterVisualDefinition = {
   muzzleAnchorX: 0.06,
   muzzleAnchorY: 0.62,
   aimHeightFraction: 0.5,
+  baseVisualRotationOffset: 0,
   animationSet: 'boss',
 };
-
-/** Inherent tilt of the player rifle in the sprite (radians, positive = right). */
-export const SOLDIER_BARREL_ANGLE = 0.32;
-
-/**
- * Sprite rotation for a given aim angle. Shared by the simulation (muzzle origin)
- * and the renderer (drawn pose) so projectiles always leave the drawn muzzle.
- * Only part of the aim is expressed as body rotation so soldiers lean rather
- * than spin; the barrel's built-in tilt is partially compensated.
- */
-export function soldierSpriteRotation(aimAngle: number): number {
-  return aimAngle * 0.65 - SOLDIER_BARREL_ANGLE * 0.45 * Math.min(1, Math.abs(aimAngle) * 3);
-}

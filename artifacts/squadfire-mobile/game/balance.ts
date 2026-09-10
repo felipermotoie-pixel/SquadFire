@@ -7,10 +7,18 @@
  * Squad size is applied exactly once (as the number of firing sources). Damage per
  * projectile and fire rate are weapon-based and only change through explicit gates.
  */
-import type { WeaponDefinition, WeaponId } from './types';
+import type { Vec2, WeaponDefinition, WeaponId } from './types';
 
 /** Visible causeway length in road half-widths. Enemies spawn near the far end. */
 export const ROAD_LENGTH = 6;
+
+/**
+ * Canonical road basis. Every formation, facing, projectile and debug vector is
+ * expressed in it: +y runs from the squad line toward the vanishing point,
+ * +x runs to the player's right. There is no other "forward" in the game.
+ */
+export const ROAD_FORWARD: Readonly<Vec2> = Object.freeze({ x: 0, y: 1 });
+export const ROAD_RIGHT: Readonly<Vec2> = Object.freeze({ x: 1, y: 0 });
 
 export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
   rifle: {
@@ -18,6 +26,10 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     fireRate: 2,
     damage: 10,
     projectileSpeed: 11,
+    /** Straight fire: every shot leaves the muzzle along ROAD_FORWARD, no target lookup. */
+    aimMode: 'STRAIGHT',
+    /** Lateral spread applied to the straight direction (world units per forward unit). 0 = perfect lanes. */
+    spread: 0,
     recoil: 1,
     projectileVisualId: 'tracer',
     muzzleFlashVisualId: 'flash-small',
@@ -31,28 +43,35 @@ export const SQUAD = {
   slotFollow: 9,
   /** How fast the anchor follows the finger (1/s). */
   anchorFollow: 14,
-  /** Lateral clamp for the squad anchor. */
+  /** Absolute lateral clamp for the squad anchor (small squads). */
   anchorLimit: 0.72,
-  /** Formation spacing in world units. */
-  lateralSpacing: 0.25,
-  rowSpacing: 0.17,
-  maxRowsBeforeWidening: 5,
+  /** Half-width of the drivable road; the whole formation must stay inside it. */
+  roadHalfWidth: 0.95,
+  /** Column pitch along ROAD_RIGHT (world units) = fire-lane spacing. */
+  formationHorizontalSpacing: 0.25,
+  /** Row pitch along ROAD_FORWARD for small squads (world units). */
+  formationLongitudinalSpacing: 0.17,
+  /** Row pitch floor used when a deep block is compressed. */
+  formationMinLongitudinalSpacing: 0.1,
+  /** Outer lateral extent the block may never exceed. */
+  formationMaxWidth: 1.0,
+  /** Hard cap on columns; extra soldiers add rows behind instead of width. */
+  formationMaxColumns: 5,
+  /** Total front-to-back depth budget before rows are compressed. */
+  formationMaxDepth: 0.95,
+  /** Rear rows may not sit further behind the squad line than this. */
+  formationMaxRearDepth: 0.75,
+  /** Front row may creep this far ahead of the squad line for deep blocks. */
+  formationMaxFrontAdvance: 0.3,
+  /** Formation-slot capacity of a full row (derived: equals formationMaxColumns). */
+  get formationRowCapacity(): number {
+    return this.formationMaxColumns;
+  },
 };
 
 export const MODIFIER_CAPS = {
   fireRateMax: 2.5,
   damageMax: 3,
-};
-
-export const TARGETING = {
-  /** Enemies closer than this (forward) are ignored — they are already at the line. */
-  minForward: 0.05,
-  /** Half-angle of the forward attack cone expressed as lateral units per forward unit. */
-  coneSlope: 0.75,
-  /** Lateral distance weight in target scoring. */
-  lateralWeight: 1.6,
-  /** Re-evaluate a valid target this often (seconds). */
-  reacquireInterval: 0.35,
 };
 
 export const ENEMIES = {
@@ -84,7 +103,14 @@ export const BOSS = {
   spawnY: ROAD_LENGTH - 0.1,
   holdY: 3.1,
   approachSpeed: 0.55,
-  lateralSpeed: 0.35,
+  /**
+   * Bounded lateral patrol. The boss never tracks the squad: it walks to a random
+   * waypoint inside ±patrolRange, dwells, then picks the next one.
+   */
+  patrolSpeed: 0.28,
+  patrolRange: 0.5,
+  patrolDwellMin: 0.9,
+  patrolDwellMax: 1.9,
   attackInterval: 6.5,
   attackIntervalPhase2: 4.5,
   telegraphDuration: 1.3,
@@ -104,9 +130,12 @@ export const GATES = {
 
 export const PROJECTILES = {
   poolSize: 640,
+  /** Seconds a missed bullet stays alive before it is recycled (it usually leaves the road first). */
   lifetime: 1.6,
-  /** Aim height on a normal enemy (fraction of its visual height). */
-  enemyAimHeightFraction: 0.55,
+  /** Lateral limit past which a projectile is off the road and recycled. */
+  sideExit: 1.6,
+  /** Forward margin past ROAD_LENGTH before a projectile is recycled. */
+  farExit: 0.6,
 };
 
 export const VFX = {
