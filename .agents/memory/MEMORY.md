@@ -1,0 +1,2 @@
+- [Skia on Expo Go + web](skia-expo-web.md) — pin Skia to Expo Go's build; web needs matching canvaskit + lazy import; measureText missing on web; screenshot tool has no WebGL.
+- [RN 0.86 style/API gotchas](rn-086-style-api.md) — absoluteFill only, pointerEvents via style, exclude Node scripts from app tsconfig.
