@@ -1,0 +1,24 @@
+FINAL PLAN REVIEW — APPROVED WITH THESE MANDATORY IMPLEMENTATION DETAILS
+
+1. Compute one camera-derived `farVisibleDepth`, but calculate each projectile's `maxTravel` from its own muzzle/spawn forward depth:
+
+   projectile.maxTravel =
+     farVisibleDepth - projectile.spawnForwardDepth
+
+   This ensures front-row and rear-row soldiers visually terminate their shots at the same distant battlefield boundary.
+
+2. Use the ROAD_FORWARD coordinate system consistently for combat depth checks. Avoid coupling the new architecture to raw `p.y` unless `p.y` is explicitly documented as the canonical forward-depth coordinate.
+
+3. Verify the semantics of `MODIFIER_CAPS.fireRateMax` before calculating projectile-pool requirements. If it is an absolute final fire-rate cap, do not multiply base fire rate by it again. If multishot/current projectile duplication exists, include maximum projectiles-per-shot in the pool calculation.
+
+4. Pool exhaustion must never be handled by prematurely recycling an active projectile. The supported maximum-load configuration must fit inside the pool with safety headroom. Add a stress assertion for peak active projectile count versus pool size.
+
+5. Preserve the existing atmospheric haze. Do not globally reduce road haze merely to make tracers visible. Prefer depth-aware tracer opacity and/or render a minimum ~1 px tracer core with controlled visibility while allowing haze to attenuate the glow.
+
+6. Define the far projectile limit semantically as the far visible road / vanishing region, not only as an arbitrary fixed screen percentage. The projectile should visually reach the end of the readable track and may smoothly fade only at the final portion of its flight.
+
+7. Real-device Expo Go performance validation must be reported as MANUAL VALIDATION REQUIRED unless the Agent actually has access to the physical device. Do not claim a real-device test that was not performed.
+
+All other sections of the v0.3.6 plan are approved.
+
+Proceed only after incorporating these details.
