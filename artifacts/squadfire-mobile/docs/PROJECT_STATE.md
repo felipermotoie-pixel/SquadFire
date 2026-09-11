@@ -3,7 +3,14 @@
 Updated: 2026-09-11
 
 ## Version
-`v0.3.4` — Stage-based progression. History: `v0.3.3` review fix (ranks close the frame a soldier is lost), `pre-stage-system` checkpoint, `v0.3.0` straight-fire rework, `v0.3.1` review fixes, `v0.3.2` projectile-perspective audit + compact formation + whole-formation road clamp. Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
+`v0.3.5` — Long-range visual upgrade. History: `v0.3.4` stage-based progression, `pre-visual-upgrade` checkpoint, `v0.3.3` review fix (ranks close the frame a soldier is lost), `pre-stage-system` checkpoint, `v0.3.0` straight-fire rework, `v0.3.1` review fixes, `v0.3.2` projectile-perspective audit + compact formation + whole-formation road clamp. Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
+
+## v0.3.5 — what changed (visual only, no gameplay rules touched)
+- Camera reframed for depth: horizon 17.5 %, squad line 71.5 %, `ROAD_LENGTH` 6 → 8 (enemies/gates/boss spawn at the new far end and walk in; focal follows `ROAD_LENGTH` so near-field sizes, hitboxes and muzzles are unchanged). Gates now arrive ~3.5 s later, boss entrance ~3.5 s longer.
+- Bridge drawn to `ROAD_FAR` = 90 with LOD: detailed barrier modules to y = 16, merged strips beyond, light masts every 4 units, cyan edge guide strips, seams to the horizon, aerial fade on the slab. Haze reshaped to end at the spawn line.
+- Long-range readability: enemies materialise over 0.5 s (`Enemy.age`) and carry a warm ground marker below 45 % scale. No sprite size floor.
+- New art (stylized realism): soldier 123×320 rear view (muzzle 0.857/0.005), grunt 154×320 charging pose, 1024² skyline (horizon 63.5 %). Boss art unchanged.
+- Environment: sky gradient, skyline reflection, sun glitter, perspective swell lines. Render harness gained `11-long-range`. CPU harness cost ~+15 % (noise shaders; GPU on device).
 
 ## v0.3.4 — what changed
 - Player-facing progression is now the **Stage** (`docs/STAGE_SYSTEM.md`): data-driven `StageConfig` (1–5 authored, 6+ generated, 100+ supported), state machine INTRO → ACTIVE → (BOSS_WARNING → BOSS_ACTIVE) → CLEARING → COMPLETE, stage completes only when all scheduled spawns are dead. Boss every 5 stages (major every 10) with a `BOSS INCOMING` warning. Squad/upgrades persist; runs are continuous (no victory screen; defeat card shows the stage reached).

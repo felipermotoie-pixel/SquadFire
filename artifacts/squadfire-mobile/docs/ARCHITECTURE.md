@@ -24,8 +24,8 @@ Expo (SDK 57) portrait mobile squad shooter. One artifact: `artifacts/squadfire-
 
 ## World model
 
-- Coordinates: `x` lateral in road half-widths (±1 = barrier inner faces), `y` forward (0 = squad line, `ROAD_LENGTH` = 6 = spawn zone), `h` height in the same units.
-- Camera (`game/camera.ts`): perspective scale `focal / (y + focal)`, horizon at 21.5 % of the screen height, squad line at 70.5 %, road half-width at the squad line = 0.56 × screen width. Far scale ≈ 0.27 at `ROAD_LENGTH`.
+- Coordinates: `x` lateral in road half-widths (±1 = barrier inner faces), `y` forward (0 = squad line, `ROAD_LENGTH` = 8 = spawn zone), `h` height in the same units.
+- Camera (`game/camera.ts`): perspective scale `focal / (y + focal)`, horizon at 17.5 % of the screen height, squad line at 71.5 %, road half-width at the squad line = 0.56 × screen width. Focal is derived from `ROAD_LENGTH` so the spawn line reads at ≈ 0.22 scale; the renderer draws the bridge to `ROAD_FAR` = 90 with LOD (detailed barriers to y = 16, then merged strips).
 - Sprite geometry (`game/sprite-geometry.ts`) is shared by the sim (muzzle position) and renderer (draw rect) so projectiles always leave the drawn muzzle.
 
 ## Pools and limits

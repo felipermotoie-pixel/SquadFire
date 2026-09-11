@@ -391,6 +391,7 @@ export class Game {
       hitFlash: 0,
       death: 0,
       lastHitDir: 0,
+      age: 0,
     };
     this.enemies.push(enemy);
     return enemy;
@@ -885,6 +886,7 @@ export class Game {
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       if (!e.alive) continue;
+      e.age += dt;
       if (e.hitFlash > 0) e.hitFlash -= dt;
       if (e.death > 0) {
         e.death += dt / VFX.deathLifetime;

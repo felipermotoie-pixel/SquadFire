@@ -87,6 +87,8 @@ export interface Enemy {
   death: number;
   /** Direction of the last hit (for death tilt). */
   lastHitDir: number;
+  /** Seconds since spawn (visual: far-end materialise). */
+  age: number;
 }
 
 export interface Boss {

@@ -28,14 +28,18 @@ export interface Projected {
 }
 
 export function createCamera(width: number, height: number): CameraLayout {
-  // The far end of the road should sit well below the horizon and read at ~27% scale.
-  const farScale = 0.27;
+  // Enemies spawn at ROAD_LENGTH and must still read as figures (~22% scale, ≈20 px
+  // tall on a phone), while the drawn bridge keeps converging toward the horizon
+  // well past that. The focal length is tied to ROAD_LENGTH so the near field
+  // (squad, hitboxes, muzzles) keeps the same on-screen size when the road grows.
+  const farScale = 0.22;
   const focal = (farScale * ROAD_LENGTH) / (1 - farScale);
   return {
     width,
     height,
-    horizonY: height * 0.215,
-    baseY: height * 0.705,
+    // High horizon + low squad line = the longest possible run of visible road in portrait.
+    horizonY: height * 0.175,
+    baseY: height * 0.715,
     halfWidthBase: width * 0.56,
     centerX: width / 2,
     focal,

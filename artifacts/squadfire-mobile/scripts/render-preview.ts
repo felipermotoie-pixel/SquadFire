@@ -125,6 +125,22 @@ const scenarios: Scenario[] = [
       }
     },
   },
+  {
+    // Long-range readability: a column of enemies from the spawn line to mid-road,
+    // no HUD/debug, squad parked so nothing gets shot before the frame is captured.
+    name: '11-long-range',
+    seconds: 1.2,
+    setup: (g) => {
+      g.scripted = true;
+      g.setSquadSize(8);
+      g.setInputX(-0.6);
+      const kinds = ['grunt', 'runner', 'elite'] as const;
+      for (let i = 0; i < 9; i++) {
+        const e = g.spawnEnemy(kinds[i % 3], 0.25 + (i % 3) * 0.28, 7.8 - i * 0.7);
+        e.speed = 0;
+      }
+    },
+  },
 ];
 
 function main() {

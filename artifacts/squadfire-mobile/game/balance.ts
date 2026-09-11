@@ -9,8 +9,13 @@
  */
 import type { Vec2, WeaponDefinition, WeaponId } from './types';
 
-/** Visible causeway length in road half-widths. Enemies spawn near the far end. */
-export const ROAD_LENGTH = 6;
+/**
+ * Playable causeway length in road half-widths. Enemies spawn near the far end and
+ * walk the whole length, so the player sees them long before they matter (v0.3.5
+ * raised this from 6 to 8 for long-range readability). The drawn bridge continues
+ * far beyond this toward the vanishing point (renderer ROAD_FAR).
+ */
+export const ROAD_LENGTH = 8;
 
 /**
  * Canonical road basis. Every formation, facing, projectile and debug vector is

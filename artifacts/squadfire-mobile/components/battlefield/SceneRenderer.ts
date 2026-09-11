@@ -31,9 +31,19 @@ import {
 
 import { BOSS, ENEMIES, GATES, ROAD_FORWARD, ROAD_LENGTH, ROAD_RIGHT, SQUAD } from '@/game/balance';
 
-/** How far (world units) the causeway is drawn toward the horizon. Gameplay stays within ROAD_LENGTH. */
-const ROAD_FAR = 40;
+/**
+ * How far (world units) the causeway is drawn toward the horizon. Gameplay stays within
+ * ROAD_LENGTH; the bridge keeps converging until it is a few pixels under the horizon
+ * and dissolves in atmosphere, so the road never reads as "cut".
+ */
+const ROAD_FAR = 90;
+/** Barrier modules are drawn individually up to here; beyond, a single simplified strip per side. */
+const BARRIER_DETAIL_FAR = 16;
+/** Light masts along the bridge: pitch in world units. Their shrinking cadence is the main depth cue. */
+const MAST_PITCH = 4;
 const UNIT_RECT = Skia.XYWHRect(0, 0, 1, 1);
+/** Fraction of the skyline painting's height where its sea horizon sits (measured from the asset). */
+const HORIZON_IMAGE_LINE = 0.635;
 import { project, unitPx, type CameraLayout } from '@/game/camera';
 import { gateBigNumber, gateSmallLabel, type Game } from '@/game/engine';
 import { roadHalfWidthAt } from '@/game/formation';
@@ -109,8 +119,22 @@ export class SceneRenderer {
     [0, 1],
     TileMode.Clamp,
   );
+  /** Red-orange ground marker under distant enemies so they read as threats at 20 px. */
+  private threatMarker: SkShader = Skia.Shader.MakeRadialGradient(
+    Skia.Point(0, 0),
+    1,
+    [Skia.Color('rgba(255,120,70,0.85)'), Skia.Color('rgba(255,70,40,0.35)'), Skia.Color('rgba(255,60,30,0)')],
+    [0, 0.45, 1],
+    TileMode.Clamp,
+  );
   private roadGrain: SkShader = Skia.Shader.MakeFractalNoise(0.06, 0.06, 2, 4, 0, 0);
   private waterNoise: SkShader = Skia.Shader.MakeFractalNoise(0.008, 0.045, 2, 9, 0, 0);
+  /** Fine, elongated sparkle for the sun glitter path on the water. */
+  private glitterNoise: SkShader = Skia.Shader.MakeFractalNoise(0.02, 0.09, 2, 17, 0, 0);
+  private skyShader: SkShader | null = null;
+  private glitterShader: SkShader | null = null;
+  private roadFadeShader: SkShader | null = null;
+  private mastPath = Skia.Path.Make();
 
   private gateShaders = new Map<string, SkShader>();
   private cachedCamKey = '';
@@ -198,11 +222,16 @@ export class SceneRenderer {
     this.hazeShader?.dispose();
     this.roadShader = this.waterShader = this.hazeShader = null;
     this.cachedCamKey = '';
-    for (const o of [this.unitGlow, this.softGlow, this.roadGrain, this.waterNoise]) o.dispose();
+    this.skyShader?.dispose();
+    this.glitterShader?.dispose();
+    this.roadFadeShader?.dispose();
+    this.skyShader = this.glitterShader = this.roadFadeShader = null;
+    for (const o of [this.unitGlow, this.softGlow, this.threatMarker, this.roadGrain, this.waterNoise, this.glitterNoise]) o.dispose();
     for (const f of [this.whiteFlash, this.bossFlash, this.orangeFlash, this.eliteTint, this.runnerTint, this.enrageTint, this.spawnTint, this.lostTint]) f.dispose();
     for (const pt of [this.paint, this.stroke, this.glowPaint, this.shadowPaint, this.spritePaint, this.flashPaint, this.hazePaint]) pt.dispose();
     this.roadPath.dispose();
     this.tmpPath.dispose();
+    this.mastPath.dispose();
   }
 
   setAssets(assets: SceneAssets): void {
@@ -249,6 +278,9 @@ export class SceneRenderer {
     this.roadShader?.dispose();
     this.waterShader?.dispose();
     this.hazeShader?.dispose();
+    this.skyShader?.dispose();
+    this.glitterShader?.dispose();
+    this.roadFadeShader?.dispose();
 
     const far = project(cam, 0, ROAD_FAR);
     const near = project(cam, 0, -1.4);
@@ -275,62 +307,141 @@ export class SceneRenderer {
       [0, 0.22, 0.6, 1],
       TileMode.Clamp,
     );
-    const hazeEnd = project(cam, 0, 2.4).y;
+    // Atmosphere: opaque-ish right under the horizon, gone by the enemy spawn line so
+    // distant figures stay readable while the far bridge dissolves into the sky.
+    const hazeEnd = project(cam, 0, ROAD_LENGTH).y;
     this.hazeShader = Skia.Shader.MakeLinearGradient(
-      Skia.Point(0, cam.horizonY - 6),
+      Skia.Point(0, cam.horizonY - 4),
       Skia.Point(0, hazeEnd),
-      [Skia.Color('rgba(223,246,255,0.62)'), Skia.Color('rgba(223,246,255,0.28)'), Skia.Color('rgba(223,246,255,0)')],
-      [0, 0.4, 1],
+      [Skia.Color('rgba(226,243,255,0.6)'), Skia.Color('rgba(226,243,255,0.26)'), Skia.Color('rgba(226,243,255,0.07)'), Skia.Color('rgba(226,243,255,0)')],
+      [0, 0.22, 0.6, 1],
       TileMode.Clamp,
     );
     this.hazePaint.setShader(this.hazeShader);
+    // Far road: cools and lightens toward the vanishing point (aerial perspective on the slab itself).
+    this.roadFadeShader = Skia.Shader.MakeLinearGradient(
+      Skia.Point(0, far.y),
+      Skia.Point(0, project(cam, 0, ROAD_LENGTH * 1.5).y),
+      [Skia.Color('rgba(205,228,245,0.9)'), Skia.Color('rgba(205,228,245,0.45)'), Skia.Color('rgba(205,228,245,0)')],
+      [0, 0.35, 1],
+      TileMode.Clamp,
+    );
+    this.skyShader = Skia.Shader.MakeLinearGradient(
+      Skia.Point(0, 0),
+      Skia.Point(0, cam.horizonY),
+      [Skia.Color('#2f7fd6'), Skia.Color('#6fb8f2'), Skia.Color('#c9ecff')],
+      [0, 0.55, 1],
+      TileMode.Clamp,
+    );
+    // Sun glitter: fine sparkle noise masked (DstIn) by a soft column right of centre.
+    const glitterMask = Skia.Shader.MakeLinearGradient(
+      Skia.Point(cam.width * 0.5, 0),
+      Skia.Point(cam.width * 0.92, 0),
+      [Skia.Color('rgba(255,255,255,0)'), Skia.Color('rgba(255,255,255,1)'), Skia.Color('rgba(255,255,255,0)')],
+      [0, 0.5, 1],
+      TileMode.Clamp,
+    );
+    this.glitterShader = Skia.Shader.MakeBlend(BlendMode.SrcIn, this.glitterNoise, glitterMask);
+    glitterMask.dispose();
   }
 
+  /** Sky gradient + painted skyline. The painting's sea horizon is aligned to the camera horizon. */
   private drawBackdrop(canvas: SkCanvas, cam: CameraLayout): void {
     const img = this.assets.horizon;
     const p = this.paint;
-    p.setShader(null);
-    p.setColor(Skia.Color('#8fd5ff'));
+    p.setShader(this.skyShader);
     canvas.drawRect(Skia.XYWHRect(0, 0, cam.width, cam.horizonY + 2), p);
+    p.setShader(null);
     if (!img) return;
-    const w = cam.width * 1.25;
-    const h = (w * img.height()) / img.width();
-    // The generated backdrop keeps its horizon line ~64% down the image.
-    const top = cam.horizonY - h * 0.64;
+    const rect = this.backdropRect(cam, img);
     canvas.save();
-    canvas.clipRect(Skia.XYWHRect(0, 0, cam.width, cam.horizonY + 3), ClipOp.Intersect, true);
-    canvas.drawImageRectOptions(
-      img,
-      Skia.XYWHRect(0, 0, img.width(), img.height()),
-      Skia.XYWHRect((cam.width - w) / 2, top, w, h),
-      FilterMode.Linear,
-      MipmapMode.Linear,
-      p,
-    );
+    canvas.clipRect(Skia.XYWHRect(0, 0, cam.width, cam.horizonY + 2), ClipOp.Intersect, true);
+    canvas.drawImageRectOptions(img, Skia.XYWHRect(0, 0, img.width(), img.height()), rect, FilterMode.Linear, MipmapMode.Linear, p);
     canvas.restore();
+  }
+
+  /** Screen rect for the skyline painting: horizon line of the image (HORIZON_IMAGE_LINE) lands on cam.horizonY. */
+  private backdropRect(cam: CameraLayout, img: SkImage) {
+    // The painting is wide; show its central ~70% so the towers stay large in portrait.
+    const w = cam.width * 1.45;
+    const h = (w * img.height()) / img.width();
+    const top = cam.horizonY - h * HORIZON_IMAGE_LINE;
+    return Skia.XYWHRect((cam.width - w) / 2, top, w, h);
   }
 
   private drawWater(canvas: SkCanvas, cam: CameraLayout, t: number): void {
     const p = this.paint;
+    const waterRect = Skia.XYWHRect(0, cam.horizonY, cam.width, cam.height - cam.horizonY);
     p.setShader(this.waterShader);
-    canvas.drawRect(Skia.XYWHRect(0, cam.horizonY, cam.width, cam.height - cam.horizonY), p);
+    canvas.drawRect(waterRect, p);
     p.setShader(null);
+
+    canvas.save();
+    canvas.clipRect(waterRect, ClipOp.Intersect, true);
+
+    // Skyline reflection: the painting mirrored under the horizon, squashed and faint,
+    // broken up by the moving noise so it reads as water rather than a mirror.
+    const img = this.assets.horizon;
+    if (img) {
+      const r = this.backdropRect(cam, img);
+      const reflH = (r.y + r.height - cam.horizonY) * 0.55;
+      canvas.save();
+      canvas.translate(0, cam.horizonY);
+      canvas.scale(1, -reflH / (r.y + r.height - cam.horizonY));
+      canvas.translate(0, -cam.horizonY);
+      p.setAlphaf(0.16);
+      canvas.drawImageRectOptions(img, Skia.XYWHRect(0, 0, img.width(), img.height()), r, FilterMode.Linear, MipmapMode.Linear, p);
+      p.setAlphaf(1);
+      canvas.restore();
+    }
 
     // Low-frequency moving highlights, brighter toward the horizon, restrained near the camera.
     const g = this.glowPaint;
     g.setShader(this.waterNoise);
-    g.setAlphaf(0.22);
-    canvas.save();
-    canvas.clipRect(Skia.XYWHRect(0, cam.horizonY, cam.width, cam.height - cam.horizonY), ClipOp.Intersect, true);
+    g.setAlphaf(0.2);
     const drift = (t * 9) % 4000;
+    canvas.save();
     canvas.translate(-drift * 0.35, drift);
     canvas.drawRect(Skia.XYWHRect(-2000 + drift * 0.35, cam.horizonY - drift - 40, cam.width + 4000, cam.height + 80), g);
     canvas.restore();
+
+    // Sun glitter path: sparkle column right of centre, fading with distance from the horizon.
+    const glitterH = (cam.baseY - cam.horizonY) * 0.7;
+    g.setShader(this.glitterShader);
+    for (let band = 0; band < 2; band++) {
+      // Two bands with decreasing alpha approximate a vertical fade without a second mask.
+      g.setAlphaf(0.4 - band * 0.2);
+      const y0 = cam.horizonY + (glitterH / 2) * band;
+      canvas.save();
+      canvas.clipRect(Skia.XYWHRect(cam.width * 0.5, y0, cam.width * 0.5, glitterH / 2 + 1), ClipOp.Intersect, true);
+      canvas.translate(0, (t * 14) % 600);
+      canvas.drawRect(Skia.XYWHRect(0, cam.horizonY - 640, cam.width, glitterH + 1300), g);
+      canvas.restore();
+    }
     g.setShader(null);
     g.setAlphaf(1);
 
+    // Perspective swell lines: thin horizontal highlights that tighten toward the horizon
+    // and drift toward the camera — the water itself sells the depth, not just the bridge.
+    const s = this.stroke;
+    s.setColor(Skia.Color(PALETTE.waterShimmer));
+    s.setStrokeWidth(1);
+    const phase = (t * 0.35) % 1.6;
+    for (let k = 0; k < 22; k++) {
+      const y = 0.4 + k * 1.6 - phase;
+      const pr = project(cam, 0, y);
+      if (pr.scale < 0.06) break;
+      const alpha = 0.06 + 0.16 * Math.min(1, pr.scale * 1.4) * (0.5 + 0.5 * Math.sin(k * 1.7 + t * 0.9));
+      s.setAlphaf(alpha);
+      const halfW = cam.width * (0.35 + 0.6 * pr.scale);
+      const cx = cam.width * (k % 2 === 0 ? 0.28 : 0.74) + Math.sin(k * 2.3) * cam.width * 0.12;
+      canvas.drawLine(cx - halfW, pr.y + 1, cx + halfW, pr.y + 1, s);
+    }
+    s.setAlphaf(1);
+    canvas.restore();
+
     // Bright horizon band where sky meets sea.
-    p.setColor(Skia.Color('rgba(255,255,255,0.55)'));
+    p.setColor(Skia.Color('rgba(255,255,255,0.6)'));
     canvas.drawRect(Skia.XYWHRect(0, cam.horizonY - 1, cam.width, 3), p);
   }
 
@@ -353,25 +464,39 @@ export class SceneRenderer {
     grain.setBlendMode(BlendMode.SrcOver);
     grain.setAlphaf(1);
 
-    // Slab seams scrolling toward the player (forward motion cue).
+    // Slab seams scrolling toward the player (forward motion cue). Drawn far past the
+    // playable range so the cadence keeps tightening toward the vanishing point.
     const s = this.stroke;
     s.setColor(Skia.Color(PALETTE.roadSeam));
-    for (let k = -1; k < 26; k++) {
+    for (let k = -1; k < 60; k++) {
       const y = k * 0.75 + (0.75 - this.scroll);
       if (y < -1.3 || y > ROAD_FAR) continue;
       const pr = project(cam, 0, y);
-      if (pr.scale < 0.07) break;
+      if (pr.scale < 0.045) break;
       const half = cam.halfWidthBase * pr.scale;
       s.setStrokeWidth(Math.max(0.6, 1.8 * pr.scale));
       s.setAlphaf(0.35 * Math.min(1, pr.scale + 0.25));
       canvas.drawLine(cam.centerX - half, pr.y, cam.centerX + half, pr.y, s);
     }
-    // Two faint longitudinal seams converging to the vanishing point.
+    // Longitudinal seams converging to the vanishing point.
     s.setStrokeWidth(1);
     s.setAlphaf(0.22);
     for (const lx of [-0.34, 0.34]) {
       const a = project(cam, lx, -1.4);
       const b = project(cam, lx, ROAD_FAR);
+      canvas.drawLine(a.x, a.y, b.x, b.y, s);
+    }
+    // Edge guide strips: cool emissive lines just inside the barriers. They stay
+    // visible after the seams vanish, so the eye follows them all the way to the horizon.
+    s.setColor(Skia.Color(PALETTE.barrierRail));
+    for (const lx of [-0.93, 0.93]) {
+      const a = project(cam, lx, -1.4);
+      const b = project(cam, lx, ROAD_FAR);
+      s.setStrokeWidth(2.2);
+      s.setAlphaf(0.28);
+      canvas.drawLine(a.x, a.y, b.x, b.y, s);
+      s.setStrokeWidth(0.8);
+      s.setAlphaf(0.6);
       canvas.drawLine(a.x, a.y, b.x, b.y, s);
     }
     s.setAlphaf(1);
@@ -386,6 +511,11 @@ export class SceneRenderer {
       canvas.drawOval(Skia.XYWHRect(pr.x - (d.w * u) / 2, pr.y - (d.h * u) / 2, d.w * u, d.h * u), p);
     }
     p.setAlphaf(1);
+
+    // Aerial perspective on the slab: the far road cools toward the sky colour.
+    p.setShader(this.roadFadeShader);
+    canvas.drawRect(Skia.XYWHRect(0, cam.horizonY, cam.width, project(cam, 0, ROAD_LENGTH * 1.5).y - cam.horizonY + 2), p);
+    p.setShader(null);
     canvas.restore();
   }
 
@@ -400,11 +530,39 @@ export class SceneRenderer {
     for (const side of [-1, 1]) {
       const inner = side * 1.0;
       const outer = side * (1.0 + thickness);
+
+      // Far range: one simplified strip per side (top + inner face merged) from the
+      // last detailed module to the vanishing point. Cheap, and it keeps the barrier
+      // silhouette continuous instead of stopping mid-air.
+      {
+        const f0 = project(cam, inner, BARRIER_DETAIL_FAR);
+        const f1 = project(cam, inner, ROAD_FAR);
+        const o0 = project(cam, outer, BARRIER_DETAIL_FAR);
+        const o1 = project(cam, outer, ROAD_FAR);
+        const h0 = height * unitPx(cam, BARRIER_DETAIL_FAR);
+        const h1 = height * unitPx(cam, ROAD_FAR);
+        path.reset();
+        path.moveTo(f0.x, f0.y);
+        path.lineTo(f1.x, f1.y);
+        path.lineTo(o1.x, o1.y - h1);
+        path.lineTo(o0.x, o0.y - h0);
+        path.close();
+        p.setColor(Skia.Color(side > 0 ? PALETTE.barrierFaceLit : PALETTE.barrierTopShade));
+        p.setAlphaf(1);
+        canvas.drawPath(path, p);
+        const s = this.stroke;
+        s.setColor(Skia.Color(PALETTE.barrierRail));
+        s.setStrokeWidth(1);
+        s.setAlphaf(0.7);
+        canvas.drawLine(f0.x, f0.y - h0, f1.x, f1.y - h1, s);
+        s.setAlphaf(1);
+      }
+
       // far → near so nearer modules overlap farther ones.
-      for (let k = 26; k >= -3; k--) {
+      for (let k = Math.ceil(BARRIER_DETAIL_FAR / (moduleLen + gap)); k >= -3; k--) {
         const y0 = k * (moduleLen + gap) - this.scroll;
         const y1 = y0 + moduleLen;
-        if (y1 < -1.4 || y0 > ROAD_FAR) continue;
+        if (y1 < -1.4 || y0 > BARRIER_DETAIL_FAR) continue;
         const uA = unitPx(cam, y0);
         const uB = unitPx(cam, y1);
         const a0 = project(cam, inner, y0);
@@ -468,10 +626,56 @@ export class SceneRenderer {
       }
     }
     p.setAlphaf(1);
+    this.drawMasts(canvas, cam);
+  }
+
+  /**
+   * Light masts on the outer edge of both barriers, every MAST_PITCH units to the
+   * horizon. Their steadily shrinking pitch is the strongest single depth cue in the
+   * scene, and the warm caps give the distant bridge a visible end direction.
+   */
+  private drawMasts(canvas: SkCanvas, cam: CameraLayout): void {
+    const p = this.paint;
+    const path = this.mastPath;
+    const mastH = 1.15;
+    const capR = 0.045;
+    path.reset();
+    const caps: { x: number; y: number; r: number; a: number }[] = [];
+    for (let k = Math.floor(ROAD_FAR / MAST_PITCH); k >= 0; k--) {
+      const y = k * MAST_PITCH + (MAST_PITCH - this.scroll * (MAST_PITCH / 0.75)) % MAST_PITCH - 0.6;
+      if (y < -1.2 || y > ROAD_FAR) continue;
+      const u = unitPx(cam, y);
+      if (u < 4) continue;
+      const w = Math.max(1, 0.05 * u);
+      for (const side of [-1, 1]) {
+        const base = project(cam, side * 1.12, y);
+        const top = base.y - mastH * u;
+        path.addRect(Skia.XYWHRect(base.x - w / 2, top, w, mastH * u));
+        caps.push({ x: base.x, y: top, r: Math.max(1.2, capR * u), a: Math.min(1, u / 60) });
+      }
+    }
+    p.setColor(Skia.Color(PALETTE.barrierEdge));
+    p.setAlphaf(0.85);
+    canvas.drawPath(path, p);
+    const g = this.glowPaint;
+    g.setShader(this.softGlow);
+    for (const c of caps) {
+      g.setAlphaf(0.55 * (0.4 + 0.6 * c.a));
+      canvas.save();
+      canvas.translate(c.x, c.y);
+      canvas.scale(c.r * 3.2, c.r * 3.2);
+      canvas.drawCircle(0, 0, 1, g);
+      canvas.restore();
+    }
+    g.setShader(null);
+    g.setAlphaf(1);
+    p.setColor(Skia.Color('#fff4d6'));
+    p.setAlphaf(1);
+    for (const c of caps) canvas.drawCircle(c.x, c.y, c.r, p);
   }
 
   private drawHaze(canvas: SkCanvas, cam: CameraLayout): void {
-    canvas.drawRect(Skia.XYWHRect(0, cam.horizonY - 6, cam.width, project(cam, 0, 2.4).y - cam.horizonY + 6), this.hazePaint);
+    canvas.drawRect(Skia.XYWHRect(0, cam.horizonY - 4, cam.width, project(cam, 0, ROAD_LENGTH).y - cam.horizonY + 4), this.hazePaint);
   }
 
   // ---------------------------------------------------------------------------
@@ -674,6 +878,9 @@ export class SceneRenderer {
     let dropY = 0;
     let filter: SkColorFilter | null = e.kind === 'elite' ? this.eliteTint : e.kind === 'runner' ? this.runnerTint : null;
 
+    // Spawn staging: materialise over 0.5 s at the far end of the bridge instead of popping in.
+    if (e.age < 0.5) alpha = e.age / 0.5;
+
     if (e.hitFlash > 0) {
       filter = this.whiteFlash;
       sx *= 1.06;
@@ -685,6 +892,23 @@ export class SceneRenderer {
       rot += d * 1.4 * e.lastHitDir * mirror;
       dropY = d * frame.height * 0.4;
       sy *= 1 - d * 0.5;
+    }
+
+    // Long-range readability: below ~45% scale a sprite is a 20 px silhouette, so a
+    // warm ground marker (strongest at the spawn line, gone by mid-road) keeps every
+    // enemy readable as a threat without faking its size.
+    if (e.death === 0 && frame.scale < 0.45) {
+      const k = Math.min(1, (0.45 - frame.scale) / 0.25);
+      const g = this.glowPaint;
+      g.setShader(this.threatMarker);
+      g.setAlphaf((0.35 + 0.45 * k) * alpha);
+      canvas.save();
+      canvas.translate(frame.footX, frame.footY);
+      canvas.scale(Math.max(5, frame.width * (0.9 + k * 0.6)), Math.max(2, frame.width * (0.32 + k * 0.2)));
+      canvas.drawCircle(0, 0, 1, g);
+      canvas.restore();
+      g.setShader(null);
+      g.setAlphaf(1);
     }
 
     if (e.kind === 'elite' && e.death === 0) {

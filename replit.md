@@ -35,7 +35,7 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 - **Straight fire (v0.3.0):** no auto-targeting anywhere. Every projectile leaves its muzzle along `ROAD_FORWARD`; the drag is the aim; damage is collision-only; enemies/boss never drift toward the squad. Do not reintroduce target lookup, aim assist, or homing.
 - Soldiers always face the vanishing point; sprite heading is never derived from drag/target/slot. Asset tilt is corrected with `baseVisualRotationOffset` in `visuals.ts`, never by rotating the formation. Formation = compact straight symmetric block: spacing 0.21, columns unlock at 2/5/10/20 soldiers, cap 5 (0.84 wide), rows added behind, growth never removes a lane. Drag clamp = road − formation half-width − margin. Projectiles are world-space; screen convergence is projection only — never widen hitboxes or steer to "fix" perspective.
 - Sprite geometry is shared by sim and renderer so projectiles always leave the drawn muzzle.
-- World units: x in road half-widths (±1 = barriers), y forward (0 squad line, 6 spawn), perspective camera in `game/camera.ts`.
+- World units: x in road half-widths (±1 = barriers), y forward (0 squad line, 8 spawn = `ROAD_LENGTH`), perspective camera in `game/camera.ts` (horizon 17.5 %, squad line 71.5 %; bridge drawn to `ROAD_FAR` = 90 with LOD).
 
 ## Product
 
