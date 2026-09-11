@@ -1,8 +1,8 @@
 import React from 'react';
 
-import { GameScreen } from '@/components/GameScreen';
+import { CampaignScreen } from '@/components/CampaignScreen';
 
-/** Native entry: Skia is available synchronously, render the game directly. */
+/** Native entry: Skia is available synchronously, render the campaign flow directly. */
 export default function IndexScreen() {
-  return <GameScreen />;
+  return <CampaignScreen />;
 }

@@ -56,8 +56,23 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
   },
 };
 
+/**
+ * Squad Power (0..MAX_SQUAD_POWER) is the canonical combat strength of the run. It is
+ * what gates add to, what enemy contact subtracts from, what the HUD shows and what
+ * the save/report record. The visible squad is a *representation* of it
+ * (game/squad-power.ts): at most SQUAD.maxSize soldiers are ever on the road.
+ */
+export const MAX_SQUAD_POWER = 500;
+/** Power represented by one fully consolidated ("Power10") soldier. */
+export const POWER_PER_UNIT = 10;
+
 export const SQUAD = {
+  /** Initial Squad Power of a fresh run (5 power = 5 normal soldiers). */
   initialSize: 5,
+  /**
+   * Maximum number of VISIBLE soldiers (firing sources, formation slots, muzzles,
+   * projectile-pool sizing). Never the power cap — that is MAX_SQUAD_POWER.
+   */
   maxSize: 50,
   /** How fast a soldier converges to its formation slot (1/s). */
   slotFollow: 9,
@@ -125,38 +140,58 @@ export const MODIFIER_CAPS = {
 };
 
 /**
- * Base enemy archetypes. Stage configs (game/stages.ts) scale hp/speed per stage;
- * these are the stage-5 reference values.
+ * Enemy archetypes — movement identity, hitbox and visuals only. Archetypes carry NO
+ * hit points: regular enemy HP is always `StageConfig.enemyHP` (absolute, per stage,
+ * game/stages.ts). Speed = archetype speed × StageConfig.enemySpeedMultiplier.
  */
 export const ENEMIES = {
-  grunt: { hp: 30, speed: 0.42, hitRadius: 0.2, depthTolerance: 0.32 },
-  /** Fast, fragile flanker: crosses the road in ~9 s instead of ~14 s. */
-  runner: { hp: 18, speed: 0.66, hitRadius: 0.17, depthTolerance: 0.3 },
-  elite: { hp: 110, speed: 0.34, hitRadius: 0.26, depthTolerance: 0.38 },
-  /** Never keep more than this many enemies alive. */
+  grunt: { speed: 0.42, hitRadius: 0.2, depthTolerance: 0.32 },
+  /** Fast flanker: ~1.6× grunt speed. */
+  runner: { speed: 0.66, hitRadius: 0.17, depthTolerance: 0.3 },
+  /** Slow, wide silhouette. Same HP as everything else in its stage. */
+  elite: { speed: 0.34, hitRadius: 0.26, depthTolerance: 0.38 },
+  /** Never keep more than this many enemies alive; the scheduler defers (never drops) spawns above it. */
   maxAlive: 300,
-  spawnY: ROAD_LENGTH - 0.2,
-  /**
-   * Hard ceiling on any enemy's forward depth at spawn (`spawnEnemy` clamps to it):
-   * covers the timeline jitter (+0.15) and the second row of an escort group
-   * (+0.28 + 0.12). COMBAT_DEPTH is derived from it — nothing can ever be hit deeper.
-   */
-  maxSpawnDepth: ROAD_LENGTH - 0.2 + 0.4,
-  spawnDepthSpread: 1.1,
   /** Forward distance at which an enemy reaches the squad line. */
   contactY: 0.08,
   /** Lateral spread of a spawn group around its lane centre. */
   groupLateralSpread: 0.22,
+  /** Largest depth tolerance of any regular archetype (spawn-geometry margin). */
+  get maxDepthTolerance(): number {
+    return Math.max(this.grunt.depthTolerance, this.runner.depthTolerance, this.elite.depthTolerance);
+  },
 };
 
-/** Boss reference values. Per-stage multipliers live in game/stages.ts (bossFor). */
+/**
+ * Far-horizon spawn margins. Actual depths are derived from the camera by
+ * game/spawn-geometry.ts (`farVisibleDepth − inset`); these are the world-unit
+ * margins that keep every hittable target strictly inside the readable track.
+ */
+export const FAR_SPAWN = {
+  /** Regular spawn line = farVisibleDepth − regularInset. */
+  regularInset: 1.4,
+  /** Boss spawn line = farVisibleDepth − bossInset. */
+  bossInset: 1.2,
+  /** Per-enemy forward jitter added at spawn ([0, depthJitter)). */
+  depthJitter: 0.15,
+  /** Maximum extra depth of the rear row of a spawn group (row pitch + row jitter). */
+  groupDepthOffset: 0.4,
+  /** Visual-only fade-in of a freshly spawned enemy (seconds). Collision is immediate. */
+  fadeInSec: 0.3,
+};
+
+/** Boss reference values. HP is absolute per stage (StageConfig.boss.hp). */
 export const BOSS = {
-  hp: 2600,
   hitRadius: 0.62,
   depthTolerance: 0.7,
-  spawnY: ROAD_LENGTH - 0.1,
+  /** Forward depth where the boss stops approaching and starts its patrol/slam loop. */
   holdY: 3.1,
-  approachSpeed: 0.55,
+  /**
+   * Fallback approach pacing (seconds from spawn to holdY) when a stage config does not
+   * set `approachDurationTargetSec`. Speed is derived as distance / target, so pacing
+   * survives camera/far-depth changes.
+   */
+  defaultApproachDurationSec: 10,
   /**
    * Bounded lateral patrol. The boss never tracks the squad: it walks to a random
    * waypoint inside ±patrolRange, dwells, then picks the next one.
@@ -181,14 +216,6 @@ export const GATES = {
   /** Gate frame world height. */
   height: 0.9,
 };
-
-/**
- * Deepest forward depth at which anything can be hit: the farthest spawn line plus the
- * largest depth tolerance. Bullets beyond it are in pure flight (no collision queries).
- */
-export const COMBAT_DEPTH =
-  Math.max(ENEMIES.maxSpawnDepth, BOSS.spawnY, GATES.spawnY) +
-  Math.max(ENEMIES.grunt.depthTolerance, ENEMIES.runner.depthTolerance, ENEMIES.elite.depthTolerance, BOSS.depthTolerance);
 
 export const PROJECTILES = {
   /**

@@ -1,44 +1,66 @@
-# SquadFire — Balance
+# SquadFire — Balance (v0.4.0)
 
-All numbers live in `game/balance.ts`.
+All numbers live in `game/balance.ts` (weapons, squad, caps, far spawn, boss) and `game/stages.ts`
+(Earth table). Measured results: `docs/reports/EARTH_BALANCE_v0.4.0.md` (`pnpm run measure:earth`).
 
 ## Damage model
 ```
-squad DPS ≈ soldiers × damage(10) × damageMult × fireRate(2/s) × fireRateMult × hitEfficiency
+squad DPS ≈ squadPower × damage(10) × damageMult × fireRate(2/s) × fireRateMult × hitEfficiency
 ```
-Squad size enters exactly once (number of shooters). Fire-rate and damage multipliers come only from gates and are capped (×2.5, ×3).
+Squad Power enters exactly once: a soldier's bullet deals `damage × damageMult × representedPower`
+(`SQUAD_STACKING.md`). Modifiers come only from gates and are capped (`MODIFIER_CAPS`: damage ×3, fire
+rate ×2.5). Squad Power caps at 500 (`MAX_SQUAD_POWER`), visible soldiers at 50.
 
-## Reference numbers
-| Soldiers | Shots/s | DPS (no mods) | Grunt kills/s (30 HP) |
-| --- | --- | --- | --- |
-| 1 | 2 | 20 | 0.67 |
-| 5 | 10 | 100 | 3.3 |
-| 10 | 20 | 200 | 6.7 |
-| 25 | 50 | 500 | 16.7 |
-| 50 | 100 | 1000 | 33 |
+## Reference numbers (base mods, all lanes hitting)
+| Squad Power | Visible | Shots/s | DPS | Stage-1 grunt (20 HP) kills/s |
+| --- | --- | --- | --- | --- |
+| 5 | 5 | 10 | 100 | 5 |
+| 9 | 9 | 18 | 180 | 9 |
+| 10 | 1 × P10 | 2 | 200 | 2 (one 100-dmg bullet per kill: 80 overkill) |
+| 13 | P10 + P3 | 4 | 260 | — |
+| 100 | 10 × P10 | 20 | 2000 | — |
+| 500 | 50 × P10 | 100 | 10 000 | — |
+At both caps (×3 × ×2.5 = 7.5) power 5 already outputs 750 DPS and power 13 ≈ 1950 DPS.
 
-Boss (2600 HP base; stage 5 = 2340, stage 10 major = 4043, +28 % per boss cycle): 20 soldiers ≈ 6.5 s time-to-kill at base mods with all lanes on the body; 10 soldiers ≈ 13 s. Boss slams every 6.5 s (4.5 s in phase 2) so a 10-soldier squad eats ~2 slams.
+## Bosses (absolute HP)
+| Boss | HP | Approach | Hold | Slam cadence |
+| --- | --- | --- | --- | --- |
+| Warden of the Causeway (Stage 5) | 4500 | 10 s from `bossSpawnDepth` to `holdY` 3.1 | patrol ±0.5 | base |
+| High Warden of the Causeway (Stage 10) | 18 000 | 10 s | patrol | ×0.85 interval |
+Target windows (Principal Plan §84): sub-boss TTK 8–20 s, final 12–30 s, approach 8–12 s, bosses
+should reach the hold. Bullets reach the far spawn, so the boss takes damage during the approach.
 
-## Pacing (seed-independent targets)
-- Stage curve (`game/stages.ts`, details in `STAGE_SYSTEM.md`): stage totals 10 / 14 / 15 / 20 / 14+boss for 1–5, then 22 → ~110 by stage 100; group size 4 → 12; delay between groups 1.35 → 0.45 s; enemy HP × 0.6 at stage 1, ×1 at stage 5, then `1 + (n−5)·0.035`; speed up to +45 %; post-boss stages ×0.85 enemies / ×0.9 HP.
-- Enemy mix: grunts only in 1–2, runners (18 HP, 0.66 u/s) from 3, elites from 4 (6 % → 32 % share).
-- Boss every 5 stages after the stage's sequence + 1.3 s warning. Autopilot sims (seeds 11/23/42): stage 1 clears in 12.4–12.5 s, stage 2 12.6–13.0 s, stage 5 with a 12-soldier squad 21.4–21.7 s including the boss. v0.3.6 (compact formation, ranged projectiles) moved these by ≤ 0.3 s vs v0.3.5 — within seed noise.
-- Gates: first at 9 s, then every 12 s, paused while a boss is alive → ~1 pair per early stage.
-- Approach distance (v0.3.5): `ROAD_LENGTH` grew 6 → 8 for long-range visibility, and enemy/gate/boss spawns follow it. Speeds were **not** retuned, so time-to-contact is longer than in v0.3.4: grunt ≈ 19 s (was 14), runner ≈ 12 s (was 9), elite ≈ 23 s (was 17); gates and the boss arrive ≈ 3.6 s later. Base speeds/HP were not changed so the stage curve numbers above still hold in relative terms; if the extra firing time makes early stages too easy, the honest knob is `ENEMIES.<kind>.speed` (×1.33 restores v0.3.4 contact times), not the spawn line.
+## Pacing (Earth, measured, Profile B seed 1337)
+- Stage clear times 63 / 68 / 73 / 76 / 81 / 77 / 85 / 92 / 95 / 105 s → run 832 s (13.9 min), inside the
+  13–15 min target; deferred spawns 0; peak active enemies 12; avg active 1–4 (the far spawn stretches a
+  group over the whole road).
+- Gates: 68 pairs crossed in a run (first at 9 s, every 12 s, paused during bosses). Profile A/B reach
+  both modifier caps by Stage 4; Profile C (squad-first) ends at power ≈ 242 with visible 25.
+- Boss results: Profile B killed the sub-boss 2.1 s after spawn and the final boss 7.8 s after spawn,
+  both **during the approach** (hold never reached); Profile A (minimal, power 5) killed the sub-boss in
+  7.3 s during approach and the final boss in 28.6 s total (18.6 s of combat at the hold). Supplemental
+  seeds 17/29/43/71/101 agree (sub 1.3–2.4 s, final 7.4–8.3 s). → **BALANCE REVIEW REQUIRED**; no
+  numbers were tuned in v0.4.0 beyond the authored spec.
 
-## Hit efficiency
-There is no targeting and no overkill bookkeeping: `hitEfficiency` is entirely the player's positioning. A grunt (hit radius 0.2) standing in the block is crossed by two or three lanes (0.15 apart); a 50-soldier block puts 10 bullets/s into each of its 5 lanes. Boss hit radius 0.62 spans the whole 0.60-wide block when centred on it. Collision is a swept segment test against unchanged hitboxes, so nothing tunnels at 30 Hz and hit rates are the same at 30/60/120 Hz.
+## Hit efficiency and overkill
+No targeting: `hitEfficiency` is positioning. Collision is a swept segment test inside `combatDepth`
+(camera-derived). Overkill is now tracked (`stats.overkillDamage`, `damageDealt`): with P10 units
+firing 100+-damage bullets at 20–120 HP regulars, ~53 % of raw output was overkill in the measured run.
 
-## Formation and reach (v0.3.6 ultra-compact)
-Columns unlock at 2/5/12/24 soldiers and cap at 5 columns × 0.15 = 0.60 wide (centre span); rows are 0.12 apart, so 50 soldiers = 5 × 10 with the rear row at −0.60 (`formationMaxRearDepth`). Safe anchor range = min over rows of `roadHalfWidthAt(rowY) − 0.30 − SOLDIER_HALF_WIDTH (≈ 0.095) − formationRoadMargin (0.06)`, capped by `anchorLimit` 0.72: ±0.70 for 1–10 soldiers, ±0.62 for 20, ±0.55 for 25–50. The outermost soldier centre never passes 0.845 (rendered barrier edge 0.94). A wider block trades a little reach for lane count and density.
+## Formation and reach
+Unchanged from v0.3.6 (5 columns × 0.15, rows 0.12, thresholds 2/5/12/24, clamp per row, ±0.70 → ±0.55).
+The formation is built from *visible* soldiers, so a 500-power squad is the same 50-block as before.
 
-## Projectile range
-Bullets are not clipped at the spawn line: they fly to `camera.farVisibleDepth` (≈ 23.1, ~3× the road) and fade out there. Only the first 8.9 units (`COMBAT_DEPTH`) can contain targets, so range has no balance effect — a miss is a miss — it only changes how far tracers are visible. Pool 780 (50 soldiers × 12 in flight × 1.3); measured peak 531 with every shot missing at the capped cadence.
+## Projectile range and pool
+Bullets fly to `farVisibleDepth` (≈ 23.1) and can hit anything from the spawn line (≈ 21.6) inward.
+Pool 780 (50 × 12 × 1.3), sized from the visible count; measured peak 266 in-flight in the balance run
+and 521 in the all-miss render scene; `projectilePoolExhausted` stayed 0.
 
-## Tuning knobs worth touching first
-1. `stageConfig()` bands in `game/stages.ts` (totals, group size, delays, elite share) — pressure curve; `STAGES.bossEvery` — boss cadence.
-2. `bossConfigFor()` HP / attack scale — boss difficulty per cycle.
-3. `GATES.interval` — growth rate.
-4. `WEAPONS.rifle.fireRate` — global cadence (changes every soldier's period, not their phase).
-5. `SQUAD.formationMaxColumns` / `formationHorizontalSpacing` — lane count and lane pitch (positioning difficulty).
-6. `BOSS.patrolSpeed` / `patrolRange` — how much the player must chase the boss.
+## Tuning knobs worth touching first (see report options A–E)
+1. Boss HP (`EARTH_ROWS[4|9].boss.hp`) — direct TTK lever; does not touch regular pacing.
+2. `GATES.firstAt / interval` — modifier ramp speed; also changes how fast power grows.
+3. Gate composition / caps (`nextGatePair`, `MODIFIER_CAPS`) — the 7.5× product is the main reason bosses
+   die in the approach.
+4. Boss mechanics (`FAR_SPAWN.bossInset`, `approachDurationTargetSec`, damage gating during approach).
+5. `EARTH_ROWS` counts / windows / HP — stage pressure; keep the 13–15 min run.
+6. `WEAPONS.rifle.fireRate` — global cadence.

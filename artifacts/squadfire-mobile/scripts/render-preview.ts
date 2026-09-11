@@ -11,6 +11,7 @@ import path from 'node:path';
 import { Skia } from '@shopify/react-native-skia';
 
 import { SceneRenderer, type SceneAssets } from '../components/battlefield/SceneRenderer';
+import { POWER_PER_UNIT } from '../game/balance';
 import { Game } from '../game/engine';
 
 const W = 402;
@@ -32,6 +33,15 @@ function loadFont(rel: string, size: number) {
   return Skia.Font(tf, size);
 }
 
+/**
+ * Squad Power that renders exactly `visible` soldiers (1..9 → P1 each, 10+ → one P10
+ * per 10 power). Legacy scenes are phrased in visible soldiers; the v0.4.0 scenes below
+ * use raw power values.
+ */
+function pv(visible: number): number {
+  return visible < POWER_PER_UNIT ? visible : visible * POWER_PER_UNIT;
+}
+
 interface Scenario {
   name: string;
   seconds: number;
@@ -43,29 +53,24 @@ const scenarios: Scenario[] = [
   { name: '01-opening', seconds: 4 },
   { name: '02-midgame', seconds: 26 },
   // Stage system: Stage 3 with runners in the mix (director on, overlay shows the cursor).
-  { name: '10-stage-03', seconds: 9, debug: true, setup: (g) => g.startStage(3) },
+  { name: '10-stage-03', seconds: 9, debug: true, setup: (g) => g.devJumpToStage(3) },
   // Stage 5 boss flow: enemies cleared instantly so the boss warning/entrance shows within the budget.
   {
     name: '10-stage-05-boss',
     seconds: 12,
     debug: true,
     setup: (g) => {
-      g.setSquadSize(12);
-      g.startStage(5);
-      // Skip the pre-boss sequence: kill everything as it enters.
-      const orig = g.spawnEnemy.bind(g);
-      g.spawnEnemy = (kind, x, y) => {
-        const e = orig(kind, x, y);
-        e.hp = 1;
-        return e;
-      };
+      g.setSquadPower(pv(12));
+      g.devJumpToStage(5);
+      // Skip the 75 s regular phase: drain the schedule and go straight to the warning.
+      fastForwardToBoss(g);
     },
   },
   {
     name: '03-squad-25',
     seconds: 6,
     setup: (g) => {
-      g.setSquadSize(25);
+      g.setSquadPower(pv(25));
     },
   },
   {
@@ -73,17 +78,57 @@ const scenarios: Scenario[] = [
     seconds: 4,
     setup: (g) => {
       g.scripted = true;
-      g.setSquadSize(14);
+      g.setSquadPower(pv(14));
       g.spawnBoss();
       g.boss.pos.y = 3.4;
     },
   },
+  // ---- v0.4.0 scenes (§82) -------------------------------------------------------
+  // Earth opening: real Stage 1, first far spawns arriving at the entry line.
+  { name: '20-earth-opening', seconds: 6, debug: true },
+  // Far spawn readability: a full group parked at the entry line, squad idle on the left.
+  {
+    name: '21-far-spawn',
+    seconds: 1.2,
+    debug: true,
+    setup: (g) => {
+      g.scripted = true;
+      g.setSquadPower(5);
+      g.setInputX(-0.6);
+      const kinds = ['grunt', 'runner', 'elite'] as const;
+      for (let i = 0; i < 6; i++) {
+        const e = g.spawnEnemy(kinds[i % 3], 0.1 + (i % 3) * 0.28, g.geometry.enemySpawnDepth - Math.floor(i / 3) * 0.6);
+        e.speed = 0;
+      }
+    },
+  },
+  // Stage 5 / Stage 10 boss warnings (banner + HUD state) and far boss entries.
+  { name: '22-stage-05-warning', seconds: 0.9, debug: true, setup: (g) => { g.setSquadPower(60); g.devJumpToStage(5); fastForwardToBoss(g); } },
+  { name: '22-stage-10-warning', seconds: 0.9, debug: true, setup: (g) => { g.setSquadPower(200); g.devJumpToStage(10); fastForwardToBoss(g); } },
+  { name: '23-boss-far-entry-sub', seconds: 1.0, debug: true, setup: (g) => { g.scripted = true; g.setSquadPower(60); g.devJumpToStage(5); g.spawnBoss(); g.setInputX(-0.7); } },
+  { name: '23-boss-far-entry-final', seconds: 1.0, debug: true, setup: (g) => { g.scripted = true; g.setSquadPower(200); g.devJumpToStage(10); g.spawnBoss(); g.setInputX(-0.7); } },
+  { name: '23-boss-mid-approach', seconds: 5.0, debug: true, setup: (g) => { g.scripted = true; g.setSquadPower(60); g.devJumpToStage(5); g.spawnBoss(); g.setInputX(-0.7); } },
+  // Squad Power representation ladder: 5 / 9 / 10 / 13 / 100 / 499 / 500.
+  ...[5, 9, 10, 13, 100, 499, 500].map((power) => ({
+    name: `24-power-${String(power).padStart(3, '0')}`,
+    seconds: 2.6,
+    debug: power >= 10 && power < 100,
+    setup: (g: Game) => {
+      g.scripted = true;
+      g.setSquadPower(power);
+    },
+  })),
+  // Consolidation moment: 9 → 10 caught mid-pulse, and the transform VFX.
+  { name: '25-consolidate-9-to-10', seconds: 0.25, setup: (g) => { g.scripted = true; g.setSquadPower(9); for (let i = 0; i < 90; i++) g.advance(1 / 60); g.devAddSquadPower(1); } },
+  // Edges at power: 500 dragged right, 13 dragged left.
+  { name: '26-edge-right-500', seconds: 2.5, debug: true, setup: (g) => { g.scripted = true; g.setSquadPower(500); g.setInputX(5); } },
+  { name: '26-edge-left-013', seconds: 2.5, debug: true, setup: (g) => { g.scripted = true; g.setSquadPower(13); g.setInputX(-5); } },
   {
     name: '06-gates',
     seconds: 2,
     setup: (g) => {
       g.scripted = true;
-      g.setSquadSize(8);
+      g.setSquadPower(pv(8));
       g.spawnGatePair({ kind: 'squad', amount: 5 }, { kind: 'damage', multiplier: 2 }, 3.2);
     },
   },
@@ -92,7 +137,7 @@ const scenarios: Scenario[] = [
     seconds: 5,
     debug: true,
     setup: (g) => {
-      g.setSquadSize(10);
+      g.setSquadPower(pv(10));
     },
   },
   // Straight-fire alignment checks: static squads at 1/5/10/25/50, no enemies,
@@ -103,13 +148,13 @@ const scenarios: Scenario[] = [
     debug: true,
     setup: (g: Game) => {
       g.scripted = true;
-      g.setSquadSize(n);
+      g.setSquadPower(pv(n));
     },
   })),
   // Edge tests B/C: 5 soldiers dragged fully left / right, and 20 soldiers dragged right.
-  { name: '09-edge-left-05', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadSize(5); g.setInputX(-5); } },
-  { name: '09-edge-right-05', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadSize(5); g.setInputX(5); } },
-  { name: '09-edge-right-20', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadSize(20); g.setInputX(5); } },
+  { name: '09-edge-left-05', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadPower(pv(5)); g.setInputX(-5); } },
+  { name: '09-edge-right-05', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadPower(pv(5)); g.setInputX(5); } },
+  { name: '09-edge-right-20', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadPower(pv(20)); g.setInputX(5); } },
   {
     // Test B in pictures: squad parked left, enemy wall on the right — lanes miss.
     name: '08-off-axis-miss',
@@ -117,7 +162,7 @@ const scenarios: Scenario[] = [
     debug: true,
     setup: (g) => {
       g.scripted = true;
-      g.setSquadSize(10);
+      g.setSquadPower(pv(10));
       g.setInputX(-0.45);
       for (let i = 0; i < 6; i++) {
         const e = g.spawnEnemy('grunt', 0.55 + (i % 3) * 0.15, 2.6 + Math.floor(i / 3) * 0.5);
@@ -132,7 +177,7 @@ const scenarios: Scenario[] = [
     seconds: 1.2,
     setup: (g) => {
       g.scripted = true;
-      g.setSquadSize(8);
+      g.setSquadPower(pv(8));
       g.setInputX(-0.6);
       const kinds = ['grunt', 'runner', 'elite'] as const;
       for (let i = 0; i < 9; i++) {
@@ -143,8 +188,8 @@ const scenarios: Scenario[] = [
   },
   // v0.3.6 compact formation: 5 / 20 / 50 soldiers centred and dragged to the right edge.
   ...[5, 20, 50].flatMap((n) => [
-    { name: `12-compact-${String(n).padStart(2, '0')}-centre`, seconds: 2.6, setup: (g: Game) => { g.scripted = true; g.setSquadSize(n); } },
-    { name: `12-compact-${String(n).padStart(2, '0')}-edge`, seconds: 2.6, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadSize(n); g.setInputX(5); } },
+    { name: `12-compact-${String(n).padStart(2, '0')}-centre`, seconds: 2.6, setup: (g: Game) => { g.scripted = true; g.setSquadPower(pv(n)); } },
+    { name: `12-compact-${String(n).padStart(2, '0')}-edge`, seconds: 2.6, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadPower(pv(n)); g.setInputX(5); } },
   ]),
   {
     // Full-range miss: 50 soldiers at the capped cadence, no enemies — every bullet
@@ -153,7 +198,7 @@ const scenarios: Scenario[] = [
     seconds: 4,
     setup: (g) => {
       g.scripted = true;
-      g.setSquadSize(50);
+      g.setSquadPower(pv(50));
       g.applyEffect({ kind: 'fireRate', multiplier: 2.5 });
     },
   },
@@ -163,7 +208,7 @@ const scenarios: Scenario[] = [
     seconds: 2.4,
     setup: (g) => {
       g.scripted = true;
-      g.setSquadSize(10);
+      g.setSquadPower(pv(10));
       for (let i = 0; i < 8; i++) {
         const e = g.spawnEnemy(i % 4 === 0 ? 'elite' : 'grunt', -0.45 + i * 0.13, 3.2 + (i % 2) * 0.3);
         e.speed = 0;
@@ -173,6 +218,27 @@ const scenarios: Scenario[] = [
     },
   },
 ];
+
+/**
+ * Drains the current stage's regular schedule instantly (spawn + kill) so a preview
+ * reaches BOSS_WARNING within its frame budget. Dev-only: the run is already marked
+ * ineligible by devJumpToStage.
+ */
+function fastForwardToBoss(g: Game): void {
+  for (let i = 0; i < 60 * 120 && g.stageState !== 'BOSS_WARNING'; i++) {
+    g.debugClearEnemies();
+    g.advance(1 / 60);
+    g.drainEvents();
+    if (g.stageState === 'ACTIVE' && g.stageActiveTime < g.stageConfig.spawnWindowSec) {
+      // jump the schedule clock forward by skipping frames cheaply
+      for (let k = 0; k < 9; k++) {
+        g.debugClearEnemies();
+        g.advance(1 / 60);
+        g.drainEvents();
+      }
+    }
+  }
+}
 
 function main() {
   mkdirSync(OUT, { recursive: true });
@@ -214,7 +280,7 @@ function main() {
     const file = path.join(OUT, `${sc.name}.png`);
     writeFileSync(file, Buffer.from(bytes));
     console.log(
-      `${sc.name}: ${file}  soldiers=${game.squadSize} enemies=${game.stats.activeEnemies} projectiles=${game.stats.activeProjectiles} shots/s=${game.stats.shotsPerSecond} record+raster=${(drawMs / 30).toFixed(1)}ms/frame (CPU)`,
+      `${sc.name}: ${file}  power=${game.squadPower} visible=${game.visibleSquadCount} enemies=${game.stats.activeEnemies} projectiles=${game.stats.activeProjectiles} shots/s=${game.stats.shotsPerSecond} record+raster=${(drawMs / 30).toFixed(1)}ms/frame (CPU)`,
     );
   }
 }

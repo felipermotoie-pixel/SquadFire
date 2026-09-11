@@ -17,8 +17,8 @@ export default function IndexScreen() {
     <WithSkiaWeb
       opts={{ locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/canvaskit-wasm@${CANVASKIT_VERSION}/bin/full/${file}` }}
       getComponent={async () => {
-        const mod = await import('@/components/GameScreen');
-        return { default: mod.GameScreen };
+        const mod = await import('@/components/CampaignScreen');
+        return { default: mod.CampaignScreen };
       }}
       fallback={
         <View style={styles.loading}>

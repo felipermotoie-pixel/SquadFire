@@ -67,6 +67,14 @@ export interface Soldier {
   recoil: number;
   /** Seconds since spawn — used for the spawn "drop in" animation. */
   age: number;
+  /**
+   * Squad Power this soldier represents (1 = normal soldier, POWER_PER_UNIT = fully
+   * consolidated "Power10" soldier, in between = the single partial unit). Damage per
+   * projectile scales with it; cadence does not. Set only by the roster reconciler.
+   */
+  representedPower: number;
+  /** Seconds remaining of the cyan consolidation pulse after representedPower changed (visual). */
+  transformPulse: number;
   /** Death animation progress (0 = alive, 1 = removed). */
   death: number;
   shotsFired: number;
@@ -118,6 +126,13 @@ export interface Boss {
   nextAttackIn: number;
   /** Multiplies the balance attack intervals for this encounter (stage-dependent cadence). */
   attackIntervalScale: number;
+  /**
+   * Forward speed while approaching BOSS.holdY (world units / s). Derived at spawn from
+   * spawn depth and the stage's approach-duration target, never a fixed constant.
+   */
+  approachSpeed: number;
+  /** Sub-boss or final boss (presentation tier). */
+  type: 'sub' | 'final';
   /** Phase 1 or 2 (phase 2 starts at 50% HP). */
   phase: 1 | 2;
   death: number;
@@ -201,7 +216,9 @@ export type VfxKind =
   | 'squad-grow'
   | 'boss-phase'
   | 'boss-slam'
-  | 'soldier-lost';
+  | 'soldier-lost'
+  /** Cyan pulse when a soldier's representedPower changes (consolidation / split). */
+  | 'squad-consolidate';
 
 export interface VfxParticle {
   active: boolean;
@@ -230,7 +247,11 @@ export interface DamagePopup {
   crit: boolean;
 }
 
-export type GamePhase = 'playing' | 'paused' | 'defeat';
+/**
+ * `victory` is terminal like `defeat`: the planet's last stage completed; only residual
+ * animation runs (no spawns, no gates, no stage advance).
+ */
+export type GamePhase = 'playing' | 'paused' | 'defeat' | 'victory';
 
 export interface GameStats {
   /** Total shots fired since the run started. */
@@ -247,7 +268,22 @@ export interface GameStats {
   /** Shots dropped because the pool was full. Must stay 0 (pool is sized for the camera). */
   projectilePoolExhausted: number;
   activeEnemies: number;
+  /** Visible (alive) soldiers — the representation, never the power. */
   activeSoldiers: number;
+  /** Canonical Squad Power (0..MAX_SQUAD_POWER). */
+  squadPower: number;
+  /** Highest visible soldier count seen this run. */
+  peakVisibleSoldiers: number;
+  /** Regulars spawned by the stage scheduler in the current stage. */
+  spawnedRegulars: number;
+  /** Scheduler spawns delayed by the maxAlive cap in the current stage (never dropped). */
+  deferredSpawns: number;
+  /** Highest simultaneous regular count seen in the current stage. */
+  peakActiveEnemies: number;
+  /** Damage dealt past the target's remaining HP (wasted). */
+  overkillDamage: number;
+  /** Damage actually applied to enemies and bosses. */
+  damageDealt: number;
   poolProjectiles: number;
   poolVfx: number;
   /** Simulation step cost in ms (measured by the host loop). */
@@ -281,6 +317,8 @@ export interface GameEvent {
     | 'defeat'
     | 'stage-start'
     | 'stage-clear'
+    /** Emitted exactly once when the planet's last stage completes (terminal victory). */
+    | 'planet-complete'
     | 'boss-warning';
   message?: string;
   /** Screen shake request in [0, 1]. */

@@ -6,7 +6,8 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 
 - Workflow `artifacts/squadfire-mobile: expo` — Expo dev server (Expo Go + web preview). Web needs WebGL.
 - `pnpm --filter @workspace/squadfire-mobile run typecheck` — TypeScript for the game.
-- `pnpm --filter @workspace/squadfire-mobile run test:sim` — headless simulation/firing tests (47 checks: straight-fire Tests A–E, compact-formation/edge/perspective checks, boss/enemy honesty, formation alignment 1–50, cadence, brief §44 acceptance, perf sweeps and a 500-projectile stress case).
+- `pnpm --filter @workspace/squadfire-mobile run test:sim` — headless simulation tests (59 fire checks + 19 stage/planet/Squad-Power/campaign checks).
+- `pnpm --filter @workspace/squadfire-mobile run measure:earth [--json]` — Earth balance harness (Profiles A/B/C, seeds), writes `docs/reports/EARTH_BALANCE_v0.4.0.md`.
 - `pnpm --filter @workspace/squadfire-mobile run render:preview` — renders 15 scenario PNGs (incl. alignment at 1/5/10/25/50, off-axis miss, edge drags) to `/tmp/squadfire-preview/` through CanvasKit; use this for visual review when a screenshot tool lacks WebGL.
 - `pnpm run typecheck` — full workspace typecheck.
 - The `api-server` / `api-spec` / `db` packages are the untouched monorepo template; the game is fully client-side (no `DATABASE_URL` needed).
@@ -39,7 +40,7 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 
 ## Product
 
-Continuous run of **Stages** (`artifacts/squadfire-mobile/docs/STAGE_SYSTEM.md`): each stage = several spawn groups, cleared only when all scheduled enemies are dead; boss every 5th stage (major every 10th) after a `BOSS INCOMING` warning; squad/upgrades persist between stages; defeat card shows the stage reached. Enemy kinds grunt/runner/elite, gate pairs keep coming across stages. Campaign progress saved via AsyncStorage (stage terminology only — never "wave"). No shop/economy/stage-select yet (explicitly out of scope); runs start at Stage 1.
+One **planet** per run (`docs/PLANET_SYSTEM.md`): Earth = 10 fixed hand-authored **Stages** (`docs/STAGE_SYSTEM.md`), exact enemy counts with absolute HP spawned just below the horizon over a window, cleared only when all scheduled enemies are dead; sub-boss at Stage 5 (4500 HP) and final boss at Stage 10 (18 000 HP) after `BOSS INCOMING`, entering from the far line; Stage 10 clear = planet victory. **Squad Power** (5 → cap 500) is the strength; visible soldiers are its 10:1 representation, max 50 (`docs/SQUAD_STACKING.md`). Squad Power/upgrades persist between stages; every run and RETRY starts at Stage 1 with power 5. Campaign progress saved via AsyncStorage (schema v3, planet-keyed; stage terminology only — never "wave"); dev/test hooks make a run ineligible for saving. No shop/economy/planet-select yet (explicitly out of scope). v0.4.0 balance verdict: REVIEW REQUIRED (bosses die during approach) — do not tag `v0.4.0` until decided.
 
 ## User preferences
 

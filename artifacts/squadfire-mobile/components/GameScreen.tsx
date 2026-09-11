@@ -1,10 +1,13 @@
 /**
  * Gameplay screen: Skia battlefield + minimal React HUD.
  *
- * The HUD only shows what the player needs during play (stage, squad size, boss
- * health, pause). Progression is stage-based: the engine runs the stage state
- * machine, this screen only renders banners and persists campaign progress. Diagnostics live behind a developer panel that is compiled out
- * of production builds (`__DEV__`).
+ * The HUD only shows what the player needs during play (planet · stage, Squad Power,
+ * boss health, pause). Progression is planet/stage-based: the engine runs the stage
+ * state machine; this screen renders banners and reports stage clears / planet
+ * completion upward through callbacks (the campaign wrapper owns persistence).
+ * Progress is only reported for runs the engine still marks `progressEligible`.
+ * Diagnostics live behind a developer panel that is compiled out of production
+ * builds (`__DEV__`).
  */
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -15,17 +18,45 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Battlefield } from '@/components/battlefield/Battlefield';
 import { PALETTE } from '@/components/battlefield/palette';
-import { BOSS } from '@/game/balance';
-import { loadCampaign, recordStageCleared, recordStageReached, resetCampaign, saveCampaign, type CampaignProgress, defaultCampaign } from '@/game/campaign';
+import { BOSS, MAX_SQUAD_POWER, SQUAD } from '@/game/balance';
 import { Game } from '@/game/engine';
-import { isMajorBossStage } from '@/game/stages';
+import { DEFAULT_PLANET_ID } from '@/game/planets';
+import { bossDisplayName } from '@/game/stages';
 import type { GameEvent, GamePhase } from '@/game/types';
+
+/** What the run reports upward when the planet's last stage is cleared. */
+export interface PlanetRunSummary {
+  planetId: string;
+  kills: number;
+  elapsed: number;
+  squadPower: number;
+  coins: number;
+  /** False when the run used dev tools; the wrapper must not persist it. */
+  progressEligible: boolean;
+}
+
+export interface GameScreenProps {
+  planetId?: string;
+  /** Called on every eligible stage clear (never for dev/scripted runs). */
+  onStageCleared?: (planetId: string, stage: number) => void;
+  /** Called once when the planet's last stage is cleared (eligible or not — see summary). */
+  onPlanetComplete?: (summary: PlanetRunSummary) => void;
+  /** Leaves the run (victory card → back to the campaign wrapper). */
+  onExit?: () => void;
+  /** Dev panel "Reset save": the campaign wrapper owns persistence, so it performs the reset. */
+  onResetProgress?: () => void;
+}
 
 interface HudState {
   phase: GamePhase;
+  planetName: string;
   stage: number;
-  squad: number;
+  stageCount: number;
+  squadPower: number;
+  visible: number;
+  progressEligible: boolean;
   bossActive: boolean;
+  bossName: string;
   bossHp: number;
   bossMax: number;
   bossPhase: 1 | 2;
@@ -41,9 +72,6 @@ interface Notice {
   tone: 'squad' | 'danger' | 'neutral' | 'gold';
 }
 
-const BOSS_NAME = 'WARDEN OF THE CAUSEWAY';
-const MAJOR_BOSS_NAME = 'HIGH WARDEN OF THE CAUSEWAY';
-
 /** Player-facing stage label, zero-padded like the brief ("STAGE 03"). */
 function stageLabel(stage: number): string {
   return stage < 10 ? `0${stage}` : String(stage);
@@ -52,9 +80,14 @@ function stageLabel(stage: number): string {
 function readHud(game: Game): HudState {
   return {
     phase: game.phase,
+    planetName: game.planet.displayName,
     stage: game.stage,
-    squad: game.squadSize,
+    stageCount: game.planet.stages.length,
+    squadPower: game.squadPower,
+    visible: game.visibleSquadCount,
+    progressEligible: game.progressEligible,
     bossActive: game.boss.active && game.boss.alive,
+    bossName: bossDisplayName(game.stageConfig.boss ?? { type: game.boss.type, hp: 0, approachDurationTargetSec: 0, attackIntervalMultiplier: 1, escortSize: 0, escortInterval: 0 }),
     bossHp: game.boss.hp,
     bossMax: game.boss.maxHp,
     bossPhase: game.boss.phase,
@@ -69,8 +102,11 @@ function hudEqual(a: HudState, b: HudState): boolean {
   return (
     a.phase === b.phase &&
     a.stage === b.stage &&
-    a.squad === b.squad &&
+    a.squadPower === b.squadPower &&
+    a.visible === b.visible &&
+    a.progressEligible === b.progressEligible &&
     a.bossActive === b.bossActive &&
+    a.bossName === b.bossName &&
     Math.abs(a.bossHp - b.bossHp) < 1 &&
     a.bossPhase === b.bossPhase &&
     a.kills === b.kills &&
@@ -83,31 +119,28 @@ function hudEqual(a: HudState, b: HudState): boolean {
 function noticeFor(e: GameEvent): Notice | null {
   if (!e.message) return null;
   const tone: Notice['tone'] =
-    e.type === 'gate' ? (e.message.includes('SQUAD') ? 'squad' : 'gold') : e.type === 'stage-start' ? 'neutral' : e.type === 'stage-clear' ? 'squad' : 'danger';
+    e.type === 'gate' ? (e.message.includes('SQUAD') ? 'squad' : 'gold') : e.type === 'stage-start' ? 'neutral' : e.type === 'stage-clear' || e.type === 'planet-complete' ? 'squad' : 'danger';
   return { id: Math.random(), text: e.message, tone };
 }
 
-export function GameScreen() {
+export function GameScreen({ planetId = DEFAULT_PLANET_ID, onStageCleared, onPlanetComplete, onExit, onResetProgress }: GameScreenProps) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [seed, setSeed] = useState(1);
-  // Campaign progress is loaded once and updated as stages are cleared. A run
-  // always starts at Stage 1 until the menu/campaign pass defines a "continue"
-  // rule (squad size is per-run, so jumping straight to Stage 12 would be a wall).
-  const campaign = useRef<CampaignProgress>(defaultCampaign());
-  useEffect(() => {
-    let cancelled = false;
-    loadCampaign().then((p) => {
-      if (!cancelled) campaign.current = p;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  // One Game per run. Dimension changes only update its camera (see Battlefield),
-  // they never recreate the simulation.
+  // One Game per run: every run (and every RETRY) starts the planet at Stage 1 with
+  // the initial Squad Power — Squad Power is per-run, there is no mid-planet resume.
+  // Dimension changes only update its camera (see Battlefield), never the simulation.
   const initialSize = useRef({ width, height });
-  const game = useMemo(() => new Game({ seed: seed * 7919 + 13, startStage: 1, ...initialSize.current }), [seed]);
+  const game = useMemo(
+    () => new Game({ seed: seed * 7919 + 13, planetId, startStage: 1, initialSquadPower: SQUAD.initialSize, ...initialSize.current }),
+    [seed, planetId],
+  );
+  const callbacks = useRef({ onStageCleared, onPlanetComplete });
+  callbacks.current = { onStageCleared, onPlanetComplete };
+  const planetReported = useRef(false);
+  useEffect(() => {
+    planetReported.current = false;
+  }, [game]);
   const [hud, setHud] = useState<HudState>(() => readHud(game));
   const [notices, setNotices] = useState<Notice[]>([]);
   const [debug, setDebug] = useState(false);
@@ -151,14 +184,19 @@ export function GameScreen() {
         const n = noticeFor(e);
         if (n) pushNotice(n);
         if (e.type === 'stage-clear') {
-          campaign.current = recordStageCleared(campaign.current, g.stage);
-          void saveCampaign(campaign.current);
-        } else if (e.type === 'stage-start') {
-          const next = recordStageReached(campaign.current, g.stage);
-          if (next !== campaign.current) {
-            campaign.current = next;
-            void saveCampaign(next);
-          }
+          // Only campaign-legit runs move the save. Dev jumps, presets and cheats latch
+          // progressEligible = false inside the engine; nothing here can re-enable it.
+          if (g.progressEligible) callbacks.current.onStageCleared?.(g.planet.id, g.stage);
+        } else if (e.type === 'planet-complete' && !planetReported.current) {
+          planetReported.current = true;
+          callbacks.current.onPlanetComplete?.({
+            planetId: g.planet.id,
+            kills: g.stats.kills,
+            elapsed: g.stats.elapsed,
+            squadPower: g.squadPower,
+            coins: g.run.coins,
+            progressEligible: g.progressEligible,
+          });
         }
         if (Platform.OS !== 'web') {
           if (e.type === 'gate') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -199,8 +237,9 @@ export function GameScreen() {
 
   const restart = () => setSeed((s) => s + 1);
   const bossPct = hud.bossActive ? Math.max(0, hud.bossHp / hud.bossMax) : 0;
-  const showEnd = hud.phase === 'defeat';
-  const bossName = isMajorBossStage(hud.stage) ? MAJOR_BOSS_NAME : BOSS_NAME;
+  const showDefeat = hud.phase === 'defeat';
+  const showVictory = hud.phase === 'victory';
+  const bossName = hud.bossName;
 
   return (
     <View style={styles.root}>
@@ -214,14 +253,20 @@ export function GameScreen() {
           onLongPress={__DEV__ ? () => setDevOpen(true) : undefined}
           delayLongPress={600}
           style={styles.pill}
-          accessibilityLabel={`Stage ${hud.stage}`}
+          accessibilityLabel={`${hud.planetName}, stage ${hud.stage} of ${hud.stageCount}`}
         >
-          <Text style={styles.pillLabel}>STAGE</Text>
-          <Text style={styles.pillValue}>{stageLabel(hud.stage)}</Text>
+          <Text style={styles.pillLabel}>{hud.planetName} • STAGE</Text>
+          <Text style={styles.pillValue}>
+            {stageLabel(hud.stage)}
+            <Text style={styles.pillDim}>/{stageLabel(hud.stageCount)}</Text>
+          </Text>
         </Pressable>
-        <View style={styles.pillSquad} accessibilityLabel={`${hud.squad} soldiers`}>
+        <View style={styles.pillSquad} accessibilityLabel={`Squad power ${hud.squadPower} of ${MAX_SQUAD_POWER}`}>
           <Ionicons name="people" size={16} color={PALETTE.gateSquad} />
-          <Text style={[styles.pillValue, { color: PALETTE.gateSquad }]}>{hud.squad}</Text>
+          <Text style={[styles.pillValue, { color: PALETTE.gateSquad }]}>
+            {hud.squadPower}
+            <Text style={styles.pillDim}> / {MAX_SQUAD_POWER}</Text>
+          </Text>
         </View>
         <View style={{ flex: 1 }} />
         <Pressable
@@ -237,8 +282,14 @@ export function GameScreen() {
         </Pressable>
       </View>
 
+      {__DEV__ && !hud.progressEligible && (
+        <View style={[styles.devBadge, { top: insets.top + 52, pointerEvents: 'none' }]}>
+          <Text style={styles.devBadgeText}>DEV RUN — PROGRESS NOT SAVED</Text>
+        </View>
+      )}
+
       {hud.bossActive && (
-        <View style={[styles.bossBar, { top: insets.top + 60, pointerEvents: 'none' }]}>
+        <View style={[styles.bossBar, { top: insets.top + (hud.progressEligible ? 60 : 78), pointerEvents: 'none' }]}>
           <Text style={styles.bossName}>{bossName}</Text>
           <View style={styles.bossTrack}>
             <View
@@ -268,7 +319,7 @@ export function GameScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>PAUSED</Text>
             <Text style={styles.cardSub}>
-              Stage {hud.stage} · {hud.squad} soldiers · {hud.kills} kills
+              {hud.planetName} · Stage {hud.stage}/{hud.stageCount} · Squad {hud.squadPower} · {hud.kills} kills
             </Text>
             <View style={styles.row}>
               <Text style={styles.rowLabel}>Reduced screen shake</Text>
@@ -291,18 +342,40 @@ export function GameScreen() {
       )}
 
       {/* ---- End states ---- */}
-      {showEnd && (
+      {showDefeat && (
         <View style={styles.overlay}>
           <View style={styles.card}>
             <Text style={[styles.cardKicker, { color: PALETTE.bossGlow }]}>SQUAD LOST</Text>
             <Text style={styles.cardTitle}>THE CAUSEWAY HOLDS</Text>
             <View style={styles.statsRow}>
-              <Stat label="STAGE" value={stageLabel(hud.stage)} />
+              <Stat label="STAGE" value={`${stageLabel(hud.stage)}/${stageLabel(hud.stageCount)}`} />
               <Stat label="KILLS" value={String(hud.kills)} />
               <Stat label="TIME" value={`${Math.floor(hud.elapsed)}s`} />
             </View>
             <Pressable style={styles.primaryButton} onPress={restart}>
               <Text style={styles.primaryButtonText}>RETRY</Text>
+            </Pressable>
+            {onExit && (
+              <Pressable style={styles.ghostButton} onPress={onExit}>
+                <Text style={styles.ghostButtonText}>BACK</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
+      {showVictory && (
+        <View style={styles.overlay}>
+          <View style={styles.card}>
+            <Text style={[styles.cardKicker, { color: PALETTE.gateSquad }]}>{hud.planetName} COMPLETE</Text>
+            <Text style={styles.cardTitle}>THE CAUSEWAY IS OURS</Text>
+            <View style={styles.statsRow}>
+              <Stat label="SQUAD" value={String(hud.squadPower)} />
+              <Stat label="KILLS" value={String(hud.kills)} />
+              <Stat label="TIME" value={`${Math.floor(hud.elapsed)}s`} />
+            </View>
+            {!hud.progressEligible && <Text style={styles.cardSub}>Dev run — progress not saved.</Text>}
+            <Pressable style={styles.primaryButton} onPress={onExit ?? restart}>
+              <Text style={styles.primaryButtonText}>{onExit ? 'CONTINUE' : 'PLAY AGAIN'}</Text>
             </Pressable>
           </View>
         </View>
@@ -319,6 +392,7 @@ export function GameScreen() {
             setHud(readHud(game));
           }}
           onRestart={restart}
+          onResetProgress={onResetProgress}
           bottom={insets.bottom}
         />
       )}
@@ -376,6 +450,7 @@ function DevPanel({
   onToggleDebug,
   onClose,
   onRestart,
+  onResetProgress,
   bottom,
 }: {
   game: Game;
@@ -383,6 +458,7 @@ function DevPanel({
   onToggleDebug: () => void;
   onClose: () => void;
   onRestart: () => void;
+  onResetProgress?: () => void;
   bottom: number;
 }) {
   const [, bump] = useState(0);
@@ -393,8 +469,9 @@ function DevPanel({
     crosserTimer.current = null;
   };
   useEffect(() => stopCrosser, [game]);
-  const setSquad = (n: number) => {
-    game.setSquadSize(n);
+  const setPower = (n: number) => {
+    game.setSquadPower(n);
+    refresh();
   };
   const clearField = () => {
     stopCrosser();
@@ -408,15 +485,22 @@ function DevPanel({
   const stress = () => {
     game.scripted = true;
     clearField();
-    game.setSquadSize(50);
+    game.setSquadPower(500);
     for (let i = 0; i < 300; i++) game.spawnEnemy(i % 6 === 0 ? 'elite' : 'grunt', -0.9 + (i % 12) * 0.16, 1.4 + Math.floor(i / 12) * 0.18);
   };
   const bossTest = () => {
     game.scripted = true;
     clearField();
-    game.setSquadSize(20);
+    game.setSquadPower(200);
     game.spawnBoss();
     game.boss.pos.y = BOSS.holdY + 0.3;
+  };
+  // Far boss entry: the real approach from bossSpawnDepth at the stage's pacing.
+  const bossFar = () => {
+    game.scripted = true;
+    clearField();
+    game.setSquadPower(200);
+    game.spawnBoss();
   };
   // Straight-fire Test B: immortal, motionless enemies parked far right. Bullets must
   // miss until the squad is dragged under them.
@@ -454,41 +538,60 @@ function DevPanel({
   return (
     <View style={[styles.devPanel, { paddingBottom: bottom + 12 }]}>
       <View style={styles.devHeader}>
-        <Text style={styles.devTitle}>DEV · FIRING & STAGES</Text>
+        <Text style={styles.devTitle}>DEV · POWER {game.squadPower} · VISIBLE {game.visibleSquadCount} · PROGRESS NOT SAVED</Text>
         <Pressable onPress={onClose} hitSlop={10}>
           <Ionicons name="close" size={20} color="#fff" />
         </Pressable>
       </View>
       <View style={styles.devRow}>
-        <Btn label="1 soldier" onPress={() => setSquad(1)} />
-        <Btn label="3" onPress={() => setSquad(3)} />
-        <Btn label="10" onPress={() => setSquad(10)} />
-        <Btn label="+5" onPress={() => game.addSoldiers(5)} />
-        <Btn label="25" onPress={() => setSquad(25)} />
+        <Btn label="P1" onPress={() => setPower(1)} />
+        <Btn label="P5" onPress={() => setPower(5)} />
+        <Btn label="P9" onPress={() => setPower(9)} />
+        <Btn label="P10" onPress={() => setPower(10)} accent />
+        <Btn label="P13" onPress={() => setPower(13)} />
+        <Btn label="P100" onPress={() => setPower(100)} />
+        <Btn label="P499" onPress={() => setPower(499)} />
+        <Btn label="P500" onPress={() => setPower(500)} accent />
       </View>
       <View style={styles.devRow}>
-        <Btn label="+25% FR" onPress={() => game.applyEffect({ kind: 'fireRate', multiplier: 1.25 })} />
-        <Btn label="×1.5 DMG" onPress={() => game.applyEffect({ kind: 'damage', multiplier: 1.5 })} />
-        <Btn label="Boss ×20" onPress={bossTest} accent />
-        <Btn label="Stress 50/300" onPress={stress} accent />
+        <Btn
+          label="+1"
+          onPress={() => {
+            game.devAddSquadPower(1);
+            refresh();
+          }}
+        />
+        <Btn
+          label="+5"
+          onPress={() => {
+            game.devAddSquadPower(5);
+            refresh();
+          }}
+        />
+        <Btn
+          label="−1"
+          onPress={() => {
+            game.progressEligible = false;
+            game.loseSquadPower(1, 'contact');
+            refresh();
+          }}
+        />
+        <Btn label="+25% FR" onPress={() => game.devApplyEffect({ kind: 'fireRate', multiplier: 1.25 })} />
+        <Btn label="×1.5 DMG" onPress={() => game.devApplyEffect({ kind: 'damage', multiplier: 1.5 })} />
       </View>
       <View style={styles.devRow}>
-        <Btn label="20" onPress={() => setSquad(20)} />
-        <Btn label="50" onPress={() => setSquad(50)} />
+        <Btn label="Boss near" onPress={bossTest} accent />
+        <Btn label="Boss far entry" onPress={bossFar} accent />
+        <Btn label="Stress 500/300" onPress={stress} accent />
         <Btn label="Off-axis wall" onPress={offAxis} />
         <Btn label="Lane crosser" onPress={crosser} />
       </View>
       <View style={styles.devRow}>
         <Btn label="Clear enemies" onPress={() => game.debugClearEnemies()} />
-        <Btn label="Next stage" onPress={() => game.startStage(game.stage + 1)} />
-        <Btn label="Stage 5" onPress={() => game.startStage(5)} accent />
-        <Btn label="Stage 10" onPress={() => game.startStage(10)} accent />
-        <Btn
-          label="Reset save"
-          onPress={() => {
-            void resetCampaign();
-          }}
-        />
+        <Btn label="Next stage" onPress={() => game.devJumpToStage(game.stage + 1)} />
+        <Btn label="Stage 5" onPress={() => game.devJumpToStage(5)} accent />
+        <Btn label="Stage 10" onPress={() => game.devJumpToStage(10)} accent />
+        {onResetProgress && <Btn label="Reset save" onPress={onResetProgress} />}
       </View>
       <View style={styles.devRow}>
         <Btn
@@ -509,7 +612,7 @@ function DevPanel({
         />
         <Btn label="Restart" onPress={onRestart} />
       </View>
-      <Text style={styles.devHint}>Long-press the STAGE pill to reopen. Stage jumps keep squad and upgrades. Debug counters render on the canvas when the overlay is on.</Text>
+      <Text style={styles.devHint}>Long-press the STAGE pill to reopen. Any dev action marks the run ineligible: progress is not saved. Stage jumps keep Squad Power and upgrades.</Text>
     </View>
   );
 }
@@ -552,6 +655,18 @@ const styles = StyleSheet.create({
   },
   pillLabel: { color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.5 },
   pillValue: { color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 18, letterSpacing: 0.5 },
+  pillDim: { color: 'rgba(255,255,255,0.55)', fontFamily: 'Inter_600SemiBold', fontSize: 13, letterSpacing: 0.5 },
+  devBadge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,196,0,0.18)',
+    borderColor: 'rgba(255,196,0,0.6)',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  devBadgeText: { color: '#ffd657', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.5 },
   iconButton: {
     width: 38,
     height: 38,

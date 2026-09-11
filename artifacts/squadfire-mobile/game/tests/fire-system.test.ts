@@ -13,7 +13,7 @@
  * muzzle alignment, performance and the 500-projectile stress case.
  */
 import { Game, projectilePoolRequirement, sweptHit } from '../engine';
-import { BOSS, COMBAT_DEPTH, ENEMIES, MODIFIER_CAPS, PROJECTILES, ROAD_FORWARD, ROAD_LENGTH, SIM, SQUAD, WEAPONS } from '../balance';
+import { BOSS, ENEMIES, MODIFIER_CAPS, POWER_PER_UNIT, PROJECTILES, ROAD_FORWARD, ROAD_LENGTH, SIM, SQUAD, WEAPONS } from '../balance';
 import { createCamera, project } from '../camera';
 import { SOLDIER_HALF_WIDTH, anchorLimitFor, formationColumns, formationLayout, formationSlots } from '../formation';
 import { spriteFrame } from '../sprite-geometry';
@@ -32,8 +32,17 @@ function check(name: string, pass: boolean, detail: string): void {
   results.push({ name, pass, detail });
 }
 
+/**
+ * Squad Power that renders exactly `visible` soldiers: below 10 one normal soldier per
+ * point, from 10 on one fully consolidated soldier per 10 power. These tests are about
+ * the VISIBLE squad (formation, muzzles, lanes), so they are phrased in visible units.
+ */
+function powerForVisible(visible: number): number {
+  return visible < POWER_PER_UNIT ? visible : visible * POWER_PER_UNIT;
+}
+
 function makeGame(squad: number, seed = 7): Game {
-  const g = new Game({ seed, initialSquad: squad });
+  const g = new Game({ seed, initialSquadPower: powerForVisible(squad) });
   g.scripted = true;
   return g;
 }
@@ -149,11 +158,16 @@ const SAFE_CENTRE = SQUAD.roadHalfWidth - SOLDIER_HALF_WIDTH - SQUAD.formationRo
 {
   const g = makeGame(1);
   run(g, 0.5);
-  const deep = parkEnemy(g, g.soldiers[0].pos.x + PLAYER_SOLDIER_VISUAL.muzzleForwardOffset * 0, 99); // clamped to maxSpawnDepth
+  const geo = g.geometry;
+  const deep = parkEnemy(g, g.soldiers[0].pos.x + PLAYER_SOLDIER_VISUAL.muzzleForwardOffset * 0, 99); // clamped to maxRegularSpawnDepth
   deep.pos.x = g.soldiers[0].slot.x + g.anchorX; // lane ≈ soldier x (muzzle offset is inside the hit radius)
   const before = g.stats.hits;
   run(g, 4);
-  check('Combat depth: enemy at maxSpawnDepth is hit (COMBAT_DEPTH covers it)', deep.pos.y === ENEMIES.maxSpawnDepth && ENEMIES.maxSpawnDepth + ENEMIES.grunt.depthTolerance <= COMBAT_DEPTH + 1e-9 && g.stats.hits > before, `enemy y ${deep.pos.y.toFixed(2)}, COMBAT_DEPTH ${COMBAT_DEPTH.toFixed(2)}, hits ${g.stats.hits - before}`);
+  check(
+    'Combat depth: enemy at the deepest regular spawn is hit (combatDepth covers it, all inside farVisibleDepth)',
+    deep.pos.y === geo.maxRegularSpawnDepth && geo.maxRegularSpawnDepth + ENEMIES.grunt.depthTolerance <= geo.combatDepth + 1e-9 && geo.combatDepth < geo.farVisibleDepth && g.stats.hits > before,
+    `enemy y ${deep.pos.y.toFixed(2)}, combatDepth ${geo.combatDepth.toFixed(2)}, far ${geo.farVisibleDepth.toFixed(2)}, hits ${g.stats.hits - before}`,
+  );
 }
 
 // Pool: sized for the camera; never exhausted at the capped cadence ----------------
@@ -169,7 +183,7 @@ const SAFE_CENTRE = SQUAD.roadHalfWidth - SOLDIER_HALF_WIDTH - SQUAD.formationRo
     `peak ${g.stats.peakActiveProjectiles} ≤ ${req.theoreticalMaxActive} (${req.maxShotsInFlightPerSoldier}/soldier, flight ${req.maxFlightTime.toFixed(2)}s), pool ${g.projectiles.length} ≥ ${req.requiredPool}, exhausted ${g.stats.projectilePoolExhausted}, ${g.stats.shotsPerSecond} shots/s`,
   );
   // Widest supported layout produces the farthest readable depth → largest pool.
-  const wide = new Game({ seed: 3, initialSquad: 50, width: 1024, height: 1366 });
+  const wide = new Game({ seed: 3, initialSquadPower: powerForVisible(50), width: 1024, height: 1366 });
   wide.scripted = true;
   const reqWide = projectilePoolRequirement(wide.cam);
   wide.applyEffect({ kind: 'fireRate', multiplier: MODIFIER_CAPS.fireRateMax });
@@ -239,7 +253,7 @@ const SAFE_CENTRE = SQUAD.roadHalfWidth - SOLDIER_HALF_WIDTH - SQUAD.formationRo
     const pStep = p.y - p.prevY;
     const ok =
       Math.abs(eStep - e.speed * SIM.fixedStep) < 1e-9 &&
-      Math.abs(bStep - BOSS.approachSpeed * SIM.fixedStep) < 1e-9 &&
+      Math.abs(bStep - b.approachSpeed * SIM.fixedStep) < 1e-9 &&
       Math.abs(pStep - p.vy * SIM.fixedStep) < 1e-9;
     check('Sweep: enemy, boss and projectile prev→pos all span the same substep', ok, `enemy Δy ${eStep.toFixed(5)} (speed·dt ${(e.speed * SIM.fixedStep).toFixed(5)}), boss Δy ${bStep.toFixed(5)}, projectile Δy ${pStep.toFixed(4)}`);
   }
@@ -531,7 +545,7 @@ for (const n of [20, 50]) {
     const g = makeGame(n);
     g.setInputX(5);
     run(g, 2);
-    g.loseSoldier('contact');
+    g.loseSquadPower(1, 'contact');
     g.setInputX(5); // keep pushing against the (now wider) clamp during the death animation
     for (let i = 0; i < 120; i++) {
       g.advance(1 / 120);
@@ -539,7 +553,7 @@ for (const n of [20, 50]) {
       for (const s of g.soldiers) if (s.alive && s.death === 0) worst = Math.max(worst, Math.abs(s.pos.x));
     }
   }
-  check('Formation: losing a soldier at the edge keeps survivors inside the margin', worst <= safe + 0.02, `worst survivor |x| ${worst.toFixed(3)} vs safe ${safe.toFixed(2)} across 20→19, 10→9, 5→4, 2→1`);
+  check('Formation: losing a soldier at the edge keeps survivors inside the margin', worst <= safe + 0.02, `worst survivor |x| ${worst.toFixed(3)} vs safe ${safe.toFixed(2)} across power 200→199, 100→99, 5→4, 2→1 (visible 20, 10, 5→4, 2→1)`);
 }
 
 // Perspective: world-straight lanes converge on screen, without steering ---------
@@ -564,7 +578,7 @@ for (const n of [20, 50]) {
   g.setInputX(anchorLimitFor(1));
   run(g, 2);
   const before = g.anchorX;
-  g.addSoldiers(4);
+  g.addSquadPower(4, false);
   g.advance(1 / 120);
   const limit = anchorLimitFor(5);
   const maxX = Math.max(...g.soldiers.map((s) => s.slot.x + g.anchorX));

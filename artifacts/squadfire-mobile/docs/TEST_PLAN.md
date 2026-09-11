@@ -1,7 +1,11 @@
 # SquadFire — Test Plan
 
 ## Automated (headless)
-`pnpm run test:sim` — `game/tests/fire-system.test.ts` (59 checks) + `game/tests/stage-system.test.ts` (10 checks, stage Tests A–F: Stage 1 flow with an autopilot player, Stage 2 volume, Stage 5 boss order and "never completes before the boss dies", Stage 6 relief, Stage 10 auto-major-boss, 120-stage config validity, campaign-save migration).
+`pnpm run test:sim` — `game/tests/fire-system.test.ts` (59 checks) + `game/tests/stage-system.test.ts` (19 checks, v0.4.0): Earth table validity; deterministic spawn schedule (same seed → same events, exact count, last spawn at the window end); camera-derived spawn geometry (spawn ≤ far visible, parked regular/boss at max depth take hits); Squad Power representation for every power 0..500 and the roster reconciler (5/9/10/13/499/500, cap, presets); Stage 1 completes only after all 36 spawned and died; `maxAlive` deferral never drops a spawn; Stage 5 order (regulars → BOSS INCOMING → sub-boss far entry → clear) and "never completes before the boss dies"; boss approach speed / hold timing; Stage 10 victory is terminal with one `planet-complete`; gate clamping at the cap; gate cadence across states and none during a boss; `progressEligible` latching; campaign v3 migration (wave-era, v2, unknown planets) and monotonic reducers; flat boss-stage reward.
+
+`pnpm run measure:earth [--json]` — balance harness (Principal Plan §83/§84): Profiles A/B/C on seed 1337 + B on 17/29/43/71/101, gate steering that reaches the chosen side, applied-effect assertion, per-stage/per-boss records, writes `docs/reports/EARTH_BALANCE_v0.4.0.md`. Exit code 2 on an invalid run (unexpected gate effect).
+
+`pnpm run render:preview` — CanvasKit scenes incl. v0.4.0 `20-earth-opening`, `21-far-spawn`, `22-stage-05/10-warning`, `23-boss-far-entry-*`, `24-power-*`, `25-consolidate-9-to-10`, `26-edge-*`.
 
 Fire-system checks:
 
@@ -32,11 +36,14 @@ Fire-system checks:
 
 `pnpm run typecheck` — must be clean.
 
-## Manual (device / Expo Go) — stages
-- Start a run: `STAGE 01` banner, first grunt pair appears, killing it shows **no** banner; after ~10 kills `STAGE CLEAR` then `STAGE 02` with the squad intact.
-- Dev panel → Stage 5: after the groups, `BOSS INCOMING` (~1.3 s) then the Warden; clearing the road before the boss dies must not advance; boss death → `STAGE CLEAR` → `STAGE 06`.
-- Dev panel → Stage 10: boss name reads HIGH WARDEN, escorts trickle in during the fight.
-- Defeat card shows the stage reached; RETRY restarts at Stage 1. Kill the app and relaunch: save persists (`squadfire.campaign`).
+## Manual (device / Expo Go) — planet / stages (v0.4.0, still to run on hardware)
+- Launch: EARTH card with `PROGRESS 0/10`, PLAY, `NEXT PLANET LOCKED`. PLAY → `STAGE 01` banner, HUD `EARTH • STAGE 01/10` and `SQUAD 5 / 500`; **no** `DEV RUN` badge.
+- Enemies appear just below the horizon (fade-in, no pop-in band) and take ~50 s to reach the squad; first stage clears in ~60–65 s; `STAGE CLEAR` → `STAGE 02` with power and modifiers intact.
+- Cross a +squad gate at power 9 → one soldier remains, bigger, cyan pulse (`SQUAD 10 / 500`); losing a soldier at power 10 → 9 normals reappear.
+- Dev panel → Stage 5: after the schedule, `BOSS INCOMING` then WARDEN OF THE CAUSEWAY entering from the far horizon (~10 s approach); the run does not advance until it dies. Stage 10: HIGH WARDEN; after its death `EARTH COMPLETE` → summary card → EARTH card shows `PROGRESS 10/10`.
+- Using any dev preset shows `DEV RUN — PROGRESS NOT SAVED`; clearing stages in that run must not change the card's progress.
+- Defeat card: RETRY restarts at Stage 1 / power 5; BACK returns to the EARTH card. Kill the app and relaunch: progress persists (`squadfire.campaign`, v3). A pre-0.4.0 save (`highestCompletedStage`) shows up as Earth progress, clamped to 10.
+- FPS overlay at P500 (dev panel) with the squad off-axis: 50 visible units, `dropped` 0, same frame cost as v0.3.6's 50 soldiers.
 
 ## Manual (device / Expo Go)
 1. Launch; every soldier faces the vanishing point, the block is straight and symmetric, tracers leave the rifles straight up the road and converge to the horizon.
@@ -54,4 +61,4 @@ Fire-system checks:
 Use the dev overlay. Record fps, frame ms, peak ms for: 1, 10, 25, 50 soldiers; 100 and 300 enemies; boss with 50 soldiers (500+ projectiles). Targets: 60 fps sustained, no growth of frame time over 30 minutes (pools are fixed size; watch `peak`).
 
 ## Status
-Automated: pass (47/47). Typecheck: clean. Headless renders reviewed for alignment at 1/5/10/25/50 and the off-axis miss. Manual device pass: **not yet executed in this environment** (no device attached).
+Automated: pass (59/59 fire + 19/19 stage). Typecheck: clean. Balance harness: all 8 runs valid, verdict BALANCE REVIEW REQUIRED (see report). Headless renders reviewed for the power ladder, far spawn, boss far entry, consolidation. Web build: EARTH card → run → pause verified in a headless browser (canvas itself needs WebGL). Manual device pass: **not yet executed in this environment** (no device attached).

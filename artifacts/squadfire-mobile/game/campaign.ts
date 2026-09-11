@@ -4,9 +4,18 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { CAMPAIGN_STORAGE_KEY, LEGACY_STORAGE_KEYS, defaultCampaign, migrateCampaign, type CampaignProgress } from './campaign-progress';
+import { CAMPAIGN_STORAGE_KEY, LEGACY_STORAGE_KEYS, defaultCampaign, migrateCampaign, serializeCampaign, type CampaignProgress } from './campaign-progress';
 
-export { defaultCampaign, migrateCampaign, recordStageCleared, recordStageReached, type CampaignProgress } from './campaign-progress';
+export {
+  defaultCampaign,
+  migrateCampaign,
+  planetProgress,
+  recordPlanetCompleted,
+  recordStageCleared,
+  serializeCampaign,
+  type CampaignProgress,
+  type PlanetProgress,
+} from './campaign-progress';
 
 export async function loadCampaign(): Promise<CampaignProgress> {
   try {
@@ -26,12 +35,22 @@ export async function loadCampaign(): Promise<CampaignProgress> {
   return defaultCampaign();
 }
 
-export async function saveCampaign(progress: CampaignProgress): Promise<void> {
-  try {
-    await AsyncStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify(progress));
-  } catch (err) {
-    console.warn('[campaign] save failed', err);
-  }
+/**
+ * Writes are chained so two commits issued in the same tick can never land on disk
+ * out of order (an older write finishing last would resurrect stale progress).
+ */
+let writeChain: Promise<void> = Promise.resolve();
+
+export function saveCampaign(progress: CampaignProgress): Promise<void> {
+  const payload = serializeCampaign(progress);
+  writeChain = writeChain.then(async () => {
+    try {
+      await AsyncStorage.setItem(CAMPAIGN_STORAGE_KEY, payload);
+    } catch (err) {
+      console.warn('[campaign] save failed', err);
+    }
+  });
+  return writeChain;
 }
 
 export async function resetCampaign(): Promise<CampaignProgress> {

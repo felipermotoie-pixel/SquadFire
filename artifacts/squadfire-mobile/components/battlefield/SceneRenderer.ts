@@ -29,12 +29,13 @@ import {
   type SkShader,
 } from '@shopify/react-native-skia';
 
-import { BOSS, ENEMIES, GATES, ROAD_FORWARD, ROAD_LENGTH, ROAD_RIGHT, SQUAD } from '@/game/balance';
+import { BOSS, ENEMIES, FAR_SPAWN, GATES, POWER_PER_UNIT, ROAD_FORWARD, ROAD_LENGTH, ROAD_RIGHT, SQUAD } from '@/game/balance';
 
 /**
  * How far (world units) the causeway is drawn toward the horizon. Gameplay stays within
- * ROAD_LENGTH; the bridge keeps converging until it is a few pixels under the horizon
- * and dissolves in atmosphere, so the road never reads as "cut".
+ * the camera's farVisibleDepth (enemies enter just inside it); the bridge keeps
+ * converging until it is a few pixels under the horizon and dissolves in atmosphere,
+ * so the road never reads as "cut".
  */
 const ROAD_FAR = 90;
 /** Barrier modules are drawn individually up to here; beyond, a single simplified strip per side. */
@@ -47,6 +48,7 @@ const HORIZON_IMAGE_LINE = 0.635;
 import { project, unitPx, type CameraLayout, type Projected } from '@/game/camera';
 import { gateBigNumber, gateSmallLabel, type Game } from '@/game/engine';
 import { roadHalfWidthAt } from '@/game/formation';
+import { computeSpawnGeometry } from '@/game/spawn-geometry';
 import { emptyFrame, spriteFrame, type SpriteFrame } from '@/game/sprite-geometry';
 import type { Enemy, Gate, Soldier } from '@/game/types';
 import { BOSS_VISUAL, ENEMY_ELITE_VISUAL, ENEMY_GRUNT_VISUAL, PLAYER_SOLDIER_VISUAL } from '@/game/visuals';
@@ -157,6 +159,9 @@ export class SceneRenderer {
 
   private gateShaders = new Map<string, SkShader>();
   private cachedCamKey = '';
+  /** Screen y where the horizon haze ends (enemy spawn depth) and where the far-road fade ends (farVisibleDepth). */
+  private hazeEndY = 0;
+  private roadFadeEndY = 0;
   private roadPath = Skia.Path.Make();
   private roadShader: SkShader | null = null;
   private waterShader: SkShader | null = null;
@@ -310,6 +315,11 @@ export class SceneRenderer {
 
     const far = project(cam, 0, ROAD_FAR);
     const near = project(cam, 0, -1.4);
+    // Atmosphere and road fade are anchored to the camera-derived spawn envelope so the
+    // far entry line (v0.4.0: just inside farVisibleDepth) stays readable on any screen.
+    const geo = computeSpawnGeometry(cam);
+    this.hazeEndY = project(cam, 0, geo.enemySpawnDepth).y;
+    this.roadFadeEndY = project(cam, 0, geo.farVisibleDepth).y;
     const farHalf = cam.halfWidthBase * far.scale;
     const nearHalf = cam.halfWidthBase * near.scale;
     this.roadPath.reset();
@@ -335,7 +345,7 @@ export class SceneRenderer {
     );
     // Atmosphere: opaque-ish right under the horizon, gone by the enemy spawn line so
     // distant figures stay readable while the far bridge dissolves into the sky.
-    const hazeEnd = project(cam, 0, ROAD_LENGTH).y;
+    const hazeEnd = this.hazeEndY;
     this.hazeShader = Skia.Shader.MakeLinearGradient(
       Skia.Point(0, cam.horizonY - 4),
       Skia.Point(0, hazeEnd),
@@ -347,7 +357,7 @@ export class SceneRenderer {
     // Far road: cools and lightens toward the vanishing point (aerial perspective on the slab itself).
     this.roadFadeShader = Skia.Shader.MakeLinearGradient(
       Skia.Point(0, far.y),
-      Skia.Point(0, project(cam, 0, ROAD_LENGTH * 1.5).y),
+      Skia.Point(0, project(cam, 0, geo.farVisibleDepth).y),
       [Skia.Color('rgba(205,228,245,0.9)'), Skia.Color('rgba(205,228,245,0.45)'), Skia.Color('rgba(205,228,245,0)')],
       [0, 0.35, 1],
       TileMode.Clamp,
@@ -540,7 +550,7 @@ export class SceneRenderer {
 
     // Aerial perspective on the slab: the far road cools toward the sky colour.
     p.setShader(this.roadFadeShader);
-    canvas.drawRect(Skia.XYWHRect(0, cam.horizonY, cam.width, project(cam, 0, ROAD_LENGTH * 1.5).y - cam.horizonY + 2), p);
+    canvas.drawRect(Skia.XYWHRect(0, cam.horizonY, cam.width, this.roadFadeEndY - cam.horizonY + 2), p);
     p.setShader(null);
     canvas.restore();
   }
@@ -708,7 +718,7 @@ export class SceneRenderer {
   }
 
   private drawHaze(canvas: SkCanvas, cam: CameraLayout): void {
-    canvas.drawRect(Skia.XYWHRect(0, cam.horizonY - 4, cam.width, project(cam, 0, ROAD_LENGTH).y - cam.horizonY + 4), this.hazePaint);
+    canvas.drawRect(Skia.XYWHRect(0, cam.horizonY - 4, cam.width, this.hazeEndY - cam.horizonY + 4), this.hazePaint);
   }
 
   // ---------------------------------------------------------------------------
@@ -724,7 +734,7 @@ export class SceneRenderer {
       const vis = e.kind === 'elite' ? ENEMY_ELITE_VISUAL : ENEMY_GRUNT_VISUAL;
       const pr = project(cam, e.pos.x, e.pos.y);
       const u = unitPx(cam, e.pos.y);
-      const spawnIn = e.age < 0.5 ? e.age / 0.5 : 1;
+      const spawnIn = e.age < FAR_SPAWN.fadeInSec ? e.age / FAR_SPAWN.fadeInSec : 1;
       const w = vis.height * vis.aspect * u * vis.shadowScale * e.sizeVariation * 1.4 * (1 - e.death * 0.8) * spawnIn;
       const h = w * 0.32;
       path.addOval(Skia.XYWHRect(pr.x - w / 2, pr.y - h / 2, w, h));
@@ -850,12 +860,26 @@ export class SceneRenderer {
     const bob = -Math.abs(run) * 0.028 * frame.unit;
     // Run cycle = bob + squash only. No sway: the body (and the barrel) never leaves
     // ROAD_FORWARD while alive, so the drawn muzzle matches the simulated one.
-    let sx = 1 + Math.abs(run) * 0.018;
-    let sy = 1 - Math.abs(run) * 0.03 + s.recoil * 0.05;
+    // Consolidated soldiers (representedPower > 1) read as a heavier unit: up to +12 %
+    // scale at P10 plus a cyan core glow. Same sprite, same muzzle — the muzzle offset
+    // is inside the hit radius so the drawn barrel still matches the simulated lane.
+    const buff = s.representedPower > 1 ? s.representedPower / POWER_PER_UNIT : 0;
+    const buffScale = 1 + 0.12 * buff;
+    let sx = (1 + Math.abs(run) * 0.018) * buffScale;
+    let sy = (1 - Math.abs(run) * 0.03 + s.recoil * 0.05) * buffScale;
     let alpha = 1;
     let filter: SkColorFilter | null = null;
     let extraRot = 0;
     let dropY = 0;
+
+    if (s.transformPulse > 0) {
+      // Consolidation pulse: brief cyan flash + swell when representedPower changed.
+      const k = s.transformPulse / 0.45;
+      const swell = 1 + Math.sin(k * Math.PI) * 0.16;
+      sx *= swell;
+      sy *= swell;
+      if (k > 0.5) filter = this.spawnTint;
+    }
 
     if (s.age < 0.45) {
       // Spawn: drop in with a bright overshoot.
@@ -883,12 +907,21 @@ export class SceneRenderer {
       // Rim light under the squad: subtle cool glow that grounds the blue faction.
       const g = this.glowPaint;
       g.setShader(this.softGlow);
-      g.setAlphaf(0.16);
+      g.setAlphaf(0.16 + 0.22 * buff);
       canvas.save();
       canvas.translate(frame.footX, frame.footY);
-      canvas.scale(frame.width * 0.75, frame.width * 0.22);
+      canvas.scale(frame.width * (0.75 + 0.35 * buff), frame.width * (0.22 + 0.1 * buff));
       canvas.drawCircle(0, 0, 1, g);
       canvas.restore();
+      if (buff > 0) {
+        // Cyan core: a compact glow at chest height marks the unit as consolidated power.
+        canvas.save();
+        canvas.translate(frame.pivotX, frame.pivotY + bob + recoilY - frame.height * 0.12);
+        canvas.scale(frame.width * 0.55 * buffScale, frame.height * 0.28 * buffScale);
+        g.setAlphaf(0.28 * buff);
+        canvas.drawCircle(0, 0, 1, g);
+        canvas.restore();
+      }
       g.setShader(null);
       g.setAlphaf(1);
     }
@@ -912,8 +945,8 @@ export class SceneRenderer {
     let dropY = 0;
     let filter: SkColorFilter | null = e.kind === 'elite' ? this.eliteTint : e.kind === 'runner' ? this.runnerTint : null;
 
-    // Spawn staging: materialise over 0.5 s at the far end of the bridge instead of popping in.
-    if (e.age < 0.5) alpha = e.age / 0.5;
+    // Spawn staging: materialise over FAR_SPAWN.fadeInSec at the far entry line instead of popping in.
+    if (e.age < FAR_SPAWN.fadeInSec) alpha = e.age / FAR_SPAWN.fadeInSec;
 
     if (e.hitFlash > 0) {
       filter = this.whiteFlash;
@@ -1459,6 +1492,23 @@ export class SceneRenderer {
           }
           p.setAlphaf(1);
           break;
+        case 'squad-consolidate': {
+          // Converging cyan motes: several soldiers folding into one heavier unit.
+          p.setColor(Skia.Color(PALETTE.squadGlow));
+          for (let i = 0; i < 7; i++) {
+            const a = v.seed * 6.283 + i * 0.8976;
+            const d = (0.5 - k * 0.45) * u * v.scale;
+            p.setAlphaf((1 - k) * 0.9);
+            canvas.drawCircle(sx + Math.cos(a) * d, sy - 0.25 * u + Math.sin(a) * d * 0.5, Math.max(1.2, 0.02 * u * (1 - k * 0.5)), p);
+          }
+          p.setAlphaf(1);
+          s.setColor(Skia.Color(PALETTE.squadGlow));
+          s.setStrokeWidth(Math.max(1, (1 - k) * 3));
+          s.setAlphaf((1 - k) * 0.7);
+          canvas.drawCircle(sx, sy - 0.25 * u, (0.45 - k * 0.35) * u * v.scale, s);
+          s.setAlphaf(1);
+          break;
+        }
         case 'soldier-lost': {
           const r = (0.1 + k * 0.5) * u;
           s.setColor(Skia.Color(PALETTE.squadGlow));
@@ -1681,8 +1731,8 @@ export class SceneRenderer {
         `projectiles ${st.activeProjectiles}/${st.poolProjectiles} peak ${st.peakActiveProjectiles} dropped ${st.projectilePoolExhausted}  vfx ${st.poolVfx}`,
         `shots/s ${st.shotsPerSecond}  total ${st.shotsFired}  hits ${st.hits}  kills ${st.kills}`,
         `fireRate ×${game.mods.fireRate.toFixed(2)}  damage ×${game.mods.damage.toFixed(2)}  t ${game.time.toFixed(1)}s`,
-        `stage ${game.stage} ${game.stageState}  boss stage ${game.isBossStage}  seq ${game.stageCursor.sequence + 1}/${game.stageConfig.sequences.length}  group ${game.stageCursor.group + 1}  queued ${game.remainingScheduledSpawns}  active ${game.activeEnemyCount}`,
-        `coins ${game.run.coins}  score ${game.run.score}  cleared ${game.run.stagesCleared}  difficulty ${game.stageConfig.difficulty.toFixed(1)}`,
+        `${game.planet.id} stage ${game.stage}/${game.planet.stages.length} ${game.stageState}  boss ${game.stageConfig.boss?.type ?? '-'}  spawned ${game.spawnedRegulars}/${game.stageConfig.enemyCount}  deferred ${st.deferredSpawns}  active ${game.activeEnemyCount}  peak ${st.peakActiveEnemies}  clock ${game.stageActiveTime.toFixed(1)}s`,
+        `power ${game.squadPower}  visible ${st.activeSoldiers}  coins ${game.run.coins}  cleared ${game.run.stagesCleared}  spawn depth ${game.geometry.enemySpawnDepth.toFixed(1)}  eligible ${game.progressEligible}`,
       ];
       p.setColor(Skia.Color('rgba(0,0,0,0.55)'));
       canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(8, cam.height * 0.3, cam.width - 16, 16 * lines.length + 12), 8, 8), p);

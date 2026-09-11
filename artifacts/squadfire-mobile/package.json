@@ -11,6 +11,7 @@
     "test:sim": "pnpm run test:sim:fire && pnpm run test:sim:stages",
     "test:sim:fire": "esbuild game/tests/fire-system.test.ts --bundle --platform=node --format=esm --log-level=warning --outfile=/tmp/squadfire-simtest.mjs && node /tmp/squadfire-simtest.mjs",
     "test:sim:stages": "esbuild game/tests/stage-system.test.ts --bundle --platform=node --format=esm --log-level=warning --outfile=/tmp/squadfire-stagetest.mjs && node /tmp/squadfire-stagetest.mjs",
+    "measure:earth": "esbuild scripts/measure-earth.ts --bundle --platform=node --format=esm --log-level=warning --outfile=/tmp/squadfire-measure-earth.mjs && node /tmp/squadfire-measure-earth.mjs",
     "render:preview": "esbuild scripts/render-preview.ts --bundle --platform=node --format=esm --log-level=warning --alias:@shopify/react-native-skia=./scripts/skia-node-shim.js --alias:@=. --external:canvaskit-wasm --outfile=/tmp/squadfire-render-preview.bundle.mjs && node scripts/render-preview.mjs"
   },
   "devDependencies": {
