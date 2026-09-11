@@ -1,8 +1,9 @@
 /**
  * Gameplay screen: Skia battlefield + minimal React HUD.
  *
- * The HUD only shows what the player needs during play (wave, squad size, boss
- * health, pause). Diagnostics live behind a developer panel that is compiled out
+ * The HUD only shows what the player needs during play (stage, squad size, boss
+ * health, pause). Progression is stage-based: the engine runs the stage state
+ * machine, this screen only renders banners and persists campaign progress. Diagnostics live behind a developer panel that is compiled out
  * of production builds (`__DEV__`).
  */
 import { Ionicons } from '@expo/vector-icons';
@@ -15,12 +16,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Battlefield } from '@/components/battlefield/Battlefield';
 import { PALETTE } from '@/components/battlefield/palette';
 import { BOSS } from '@/game/balance';
+import { loadCampaign, recordStageCleared, recordStageReached, resetCampaign, saveCampaign, type CampaignProgress, defaultCampaign } from '@/game/campaign';
 import { Game } from '@/game/engine';
+import { isMajorBossStage } from '@/game/stages';
 import type { GameEvent, GamePhase } from '@/game/types';
 
 interface HudState {
   phase: GamePhase;
-  wave: number;
+  stage: number;
   squad: number;
   bossActive: boolean;
   bossHp: number;
@@ -39,11 +42,17 @@ interface Notice {
 }
 
 const BOSS_NAME = 'WARDEN OF THE CAUSEWAY';
+const MAJOR_BOSS_NAME = 'HIGH WARDEN OF THE CAUSEWAY';
+
+/** Player-facing stage label, zero-padded like the brief ("STAGE 03"). */
+function stageLabel(stage: number): string {
+  return stage < 10 ? `0${stage}` : String(stage);
+}
 
 function readHud(game: Game): HudState {
   return {
     phase: game.phase,
-    wave: game.wave,
+    stage: game.stage,
     squad: game.squadSize,
     bossActive: game.boss.active && game.boss.alive,
     bossHp: game.boss.hp,
@@ -59,7 +68,7 @@ function readHud(game: Game): HudState {
 function hudEqual(a: HudState, b: HudState): boolean {
   return (
     a.phase === b.phase &&
-    a.wave === b.wave &&
+    a.stage === b.stage &&
     a.squad === b.squad &&
     a.bossActive === b.bossActive &&
     Math.abs(a.bossHp - b.bossHp) < 1 &&
@@ -74,7 +83,7 @@ function hudEqual(a: HudState, b: HudState): boolean {
 function noticeFor(e: GameEvent): Notice | null {
   if (!e.message) return null;
   const tone: Notice['tone'] =
-    e.type === 'gate' ? (e.message.includes('SQUAD') ? 'squad' : 'gold') : e.type === 'wave' ? 'neutral' : e.type === 'victory' ? 'squad' : 'danger';
+    e.type === 'gate' ? (e.message.includes('SQUAD') ? 'squad' : 'gold') : e.type === 'stage-start' ? 'neutral' : e.type === 'stage-clear' ? 'squad' : 'danger';
   return { id: Math.random(), text: e.message, tone };
 }
 
@@ -82,10 +91,23 @@ export function GameScreen() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [seed, setSeed] = useState(1);
+  // Campaign progress is loaded once and updated as stages are cleared. A run
+  // always starts at Stage 1 until the menu/campaign pass defines a "continue"
+  // rule (squad size is per-run, so jumping straight to Stage 12 would be a wall).
+  const campaign = useRef<CampaignProgress>(defaultCampaign());
+  useEffect(() => {
+    let cancelled = false;
+    loadCampaign().then((p) => {
+      if (!cancelled) campaign.current = p;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // One Game per run. Dimension changes only update its camera (see Battlefield),
   // they never recreate the simulation.
   const initialSize = useRef({ width, height });
-  const game = useMemo(() => new Game({ seed: seed * 7919 + 13, ...initialSize.current }), [seed]);
+  const game = useMemo(() => new Game({ seed: seed * 7919 + 13, startStage: 1, ...initialSize.current }), [seed]);
   const [hud, setHud] = useState<HudState>(() => readHud(game));
   const [notices, setNotices] = useState<Notice[]>([]);
   const [debug, setDebug] = useState(false);
@@ -128,6 +150,16 @@ export function GameScreen() {
       for (const e of events) {
         const n = noticeFor(e);
         if (n) pushNotice(n);
+        if (e.type === 'stage-clear') {
+          campaign.current = recordStageCleared(campaign.current, g.stage);
+          void saveCampaign(campaign.current);
+        } else if (e.type === 'stage-start') {
+          const next = recordStageReached(campaign.current, g.stage);
+          if (next !== campaign.current) {
+            campaign.current = next;
+            void saveCampaign(next);
+          }
+        }
         if (Platform.OS !== 'web') {
           if (e.type === 'gate') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
           else if (e.type === 'boss-slam' || e.type === 'boss-defeated') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
@@ -167,7 +199,8 @@ export function GameScreen() {
 
   const restart = () => setSeed((s) => s + 1);
   const bossPct = hud.bossActive ? Math.max(0, hud.bossHp / hud.bossMax) : 0;
-  const showEnd = hud.phase === 'victory' || hud.phase === 'defeat';
+  const showEnd = hud.phase === 'defeat';
+  const bossName = isMajorBossStage(hud.stage) ? MAJOR_BOSS_NAME : BOSS_NAME;
 
   return (
     <View style={styles.root}>
@@ -181,10 +214,10 @@ export function GameScreen() {
           onLongPress={__DEV__ ? () => setDevOpen(true) : undefined}
           delayLongPress={600}
           style={styles.pill}
-          accessibilityLabel={`Wave ${hud.wave}`}
+          accessibilityLabel={`Stage ${hud.stage}`}
         >
-          <Text style={styles.pillLabel}>WAVE</Text>
-          <Text style={styles.pillValue}>{hud.wave}</Text>
+          <Text style={styles.pillLabel}>STAGE</Text>
+          <Text style={styles.pillValue}>{stageLabel(hud.stage)}</Text>
         </Pressable>
         <View style={styles.pillSquad} accessibilityLabel={`${hud.squad} soldiers`}>
           <Ionicons name="people" size={16} color={PALETTE.gateSquad} />
@@ -206,7 +239,7 @@ export function GameScreen() {
 
       {hud.bossActive && (
         <View style={[styles.bossBar, { top: insets.top + 60, pointerEvents: 'none' }]}>
-          <Text style={styles.bossName}>{BOSS_NAME}</Text>
+          <Text style={styles.bossName}>{bossName}</Text>
           <View style={styles.bossTrack}>
             <View
               style={[
@@ -235,7 +268,7 @@ export function GameScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>PAUSED</Text>
             <Text style={styles.cardSub}>
-              Wave {hud.wave} · {hud.squad} soldiers · {hud.kills} kills
+              Stage {hud.stage} · {hud.squad} soldiers · {hud.kills} kills
             </Text>
             <View style={styles.row}>
               <Text style={styles.rowLabel}>Reduced screen shake</Text>
@@ -251,7 +284,7 @@ export function GameScreen() {
               <Text style={styles.primaryButtonText}>RESUME</Text>
             </Pressable>
             <Pressable style={styles.ghostButton} onPress={restart}>
-              <Text style={styles.ghostButtonText}>RESTART STAGE</Text>
+              <Text style={styles.ghostButtonText}>RESTART RUN</Text>
             </Pressable>
           </View>
         </View>
@@ -261,17 +294,15 @@ export function GameScreen() {
       {showEnd && (
         <View style={styles.overlay}>
           <View style={styles.card}>
-            <Text style={[styles.cardKicker, { color: hud.phase === 'victory' ? PALETTE.gateSquad : PALETTE.bossGlow }]}>
-              {hud.phase === 'victory' ? 'STAGE CLEAR' : 'SQUAD LOST'}
-            </Text>
-            <Text style={styles.cardTitle}>{hud.phase === 'victory' ? 'CAUSEWAY SECURED' : 'THE WARDEN HOLDS'}</Text>
+            <Text style={[styles.cardKicker, { color: PALETTE.bossGlow }]}>SQUAD LOST</Text>
+            <Text style={styles.cardTitle}>THE CAUSEWAY HOLDS</Text>
             <View style={styles.statsRow}>
+              <Stat label="STAGE" value={stageLabel(hud.stage)} />
               <Stat label="KILLS" value={String(hud.kills)} />
-              <Stat label="SQUAD" value={String(hud.squad)} />
               <Stat label="TIME" value={`${Math.floor(hud.elapsed)}s`} />
             </View>
             <Pressable style={styles.primaryButton} onPress={restart}>
-              <Text style={styles.primaryButtonText}>{hud.phase === 'victory' ? 'PLAY AGAIN' : 'RETRY'}</Text>
+              <Text style={styles.primaryButtonText}>RETRY</Text>
             </Pressable>
           </View>
         </View>
@@ -423,7 +454,7 @@ function DevPanel({
   return (
     <View style={[styles.devPanel, { paddingBottom: bottom + 12 }]}>
       <View style={styles.devHeader}>
-        <Text style={styles.devTitle}>DEV · FIRING SYSTEM</Text>
+        <Text style={styles.devTitle}>DEV · FIRING & STAGES</Text>
         <Pressable onPress={onClose} hitSlop={10}>
           <Ionicons name="close" size={20} color="#fff" />
         </Pressable>
@@ -448,6 +479,18 @@ function DevPanel({
         <Btn label="Lane crosser" onPress={crosser} />
       </View>
       <View style={styles.devRow}>
+        <Btn label="Clear enemies" onPress={() => game.debugClearEnemies()} />
+        <Btn label="Next stage" onPress={() => game.startStage(game.stage + 1)} />
+        <Btn label="Stage 5" onPress={() => game.startStage(5)} accent />
+        <Btn label="Stage 10" onPress={() => game.startStage(10)} accent />
+        <Btn
+          label="Reset save"
+          onPress={() => {
+            void resetCampaign();
+          }}
+        />
+      </View>
+      <View style={styles.devRow}>
         <Btn
           label={game.scripted ? 'Scripted ON' : 'Scripted OFF'}
           accent={game.scripted}
@@ -466,7 +509,7 @@ function DevPanel({
         />
         <Btn label="Restart" onPress={onRestart} />
       </View>
-      <Text style={styles.devHint}>Long-press the WAVE pill to reopen. Debug counters render on the canvas when the overlay is on.</Text>
+      <Text style={styles.devHint}>Long-press the STAGE pill to reopen. Stage jumps keep squad and upgrades. Debug counters render on the canvas when the overlay is on.</Text>
     </View>
   );
 }

@@ -42,6 +42,25 @@ interface Scenario {
 const scenarios: Scenario[] = [
   { name: '01-opening', seconds: 4 },
   { name: '02-midgame', seconds: 26 },
+  // Stage system: Stage 3 with runners in the mix (director on, overlay shows the cursor).
+  { name: '10-stage-03', seconds: 9, debug: true, setup: (g) => g.startStage(3) },
+  // Stage 5 boss flow: enemies cleared instantly so the boss warning/entrance shows within the budget.
+  {
+    name: '10-stage-05-boss',
+    seconds: 12,
+    debug: true,
+    setup: (g) => {
+      g.setSquadSize(12);
+      g.startStage(5);
+      // Skip the pre-boss sequence: kill everything as it enters.
+      const orig = g.spawnEnemy.bind(g);
+      g.spawnEnemy = (kind, x, y) => {
+        const e = orig(kind, x, y);
+        e.hp = 1;
+        return e;
+      };
+    },
+  },
   {
     name: '03-squad-25',
     seconds: 6,

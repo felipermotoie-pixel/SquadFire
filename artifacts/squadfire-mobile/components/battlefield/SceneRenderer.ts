@@ -89,6 +89,8 @@ export class SceneRenderer {
   private bossFlash: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(255,236,214,0.38)'), BlendMode.SrcATop);
   private orangeFlash: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(255,140,60,0.55)'), BlendMode.SrcATop);
   private eliteTint: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(90,0,50,0.32)'), BlendMode.SrcATop);
+  /** Runners share the grunt sprite; a warm amber wash + smaller size + faster gait tell them apart. */
+  private runnerTint: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(255,150,40,0.3)'), BlendMode.SrcATop);
   private enrageTint: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(255,60,30,0.22)'), BlendMode.SrcATop);
   private spawnTint: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(140,240,255,0.7)'), BlendMode.SrcATop);
   private lostTint: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(255,255,255,0.6)'), BlendMode.SrcATop);
@@ -197,7 +199,7 @@ export class SceneRenderer {
     this.roadShader = this.waterShader = this.hazeShader = null;
     this.cachedCamKey = '';
     for (const o of [this.unitGlow, this.softGlow, this.roadGrain, this.waterNoise]) o.dispose();
-    for (const f of [this.whiteFlash, this.bossFlash, this.orangeFlash, this.eliteTint, this.enrageTint, this.spawnTint, this.lostTint]) f.dispose();
+    for (const f of [this.whiteFlash, this.bossFlash, this.orangeFlash, this.eliteTint, this.runnerTint, this.enrageTint, this.spawnTint, this.lostTint]) f.dispose();
     for (const pt of [this.paint, this.stroke, this.glowPaint, this.shadowPaint, this.spritePaint, this.flashPaint, this.hazePaint]) pt.dispose();
     this.roadPath.dispose();
     this.tmpPath.dispose();
@@ -659,8 +661,8 @@ export class SceneRenderer {
   private drawEnemy(canvas: SkCanvas, game: Game, e: Enemy, t: number): void {
     const cam = game.cam;
     const vis = e.kind === 'elite' ? ENEMY_ELITE_VISUAL : ENEMY_GRUNT_VISUAL;
-    const frame = spriteFrame(cam, vis, e.pos.x, e.pos.y, 0, e.sizeVariation, this.frame);
-    const cycle = t * 11 + e.animPhase;
+    const frame = spriteFrame(cam, vis, e.pos.x, e.pos.y, 0, e.kind === 'runner' ? e.sizeVariation * 0.86 : e.sizeVariation, this.frame);
+    const cycle = t * (e.kind === 'runner' ? 16 : 11) + e.animPhase;
     const run = Math.sin(cycle);
     const bob = -Math.abs(run) * 0.03 * frame.unit;
     const sway = Math.sin(cycle * 0.5) * 0.05;
@@ -670,7 +672,7 @@ export class SceneRenderer {
     let alpha = 1;
     let rot = sway;
     let dropY = 0;
-    let filter: SkColorFilter | null = e.kind === 'elite' ? this.eliteTint : null;
+    let filter: SkColorFilter | null = e.kind === 'elite' ? this.eliteTint : e.kind === 'runner' ? this.runnerTint : null;
 
     if (e.hitFlash > 0) {
       filter = this.whiteFlash;
@@ -1351,6 +1353,8 @@ export class SceneRenderer {
         `projectiles ${st.activeProjectiles}/${st.poolProjectiles}  vfx ${st.poolVfx}`,
         `shots/s ${st.shotsPerSecond}  total ${st.shotsFired}  hits ${st.hits}  kills ${st.kills}`,
         `fireRate ×${game.mods.fireRate.toFixed(2)}  damage ×${game.mods.damage.toFixed(2)}  t ${game.time.toFixed(1)}s`,
+        `stage ${game.stage} ${game.stageState}  boss stage ${game.isBossStage}  seq ${game.stageCursor.sequence + 1}/${game.stageConfig.sequences.length}  group ${game.stageCursor.group + 1}  queued ${game.remainingScheduledSpawns}  active ${game.activeEnemyCount}`,
+        `coins ${game.run.coins}  score ${game.run.score}  cleared ${game.run.stagesCleared}  difficulty ${game.stageConfig.difficulty.toFixed(1)}`,
       ];
       p.setColor(Skia.Color('rgba(0,0,0,0.55)'));
       canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(8, cam.height * 0.3, cam.width - 16, 16 * lines.length + 12), 8, 8), p);

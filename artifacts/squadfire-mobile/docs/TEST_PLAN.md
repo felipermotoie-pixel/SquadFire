@@ -1,7 +1,9 @@
 # SquadFire — Test Plan
 
 ## Automated (headless)
-`pnpm run test:sim` — `game/tests/fire-system.test.ts`, 47 checks:
+`pnpm run test:sim` — `game/tests/fire-system.test.ts` (47 checks) + `game/tests/stage-system.test.ts` (10 checks, stage Tests A–F: Stage 1 flow with an autopilot player, Stage 2 volume, Stage 5 boss order and "never completes before the boss dies", Stage 6 relief, Stage 10 auto-major-boss, 120-stage config validity, campaign-save migration).
+
+Fire-system checks:
 
 | Group | What it proves |
 | --- | --- |
@@ -25,6 +27,12 @@
 `pnpm run render:preview` — renders opening, mid-game, 25-soldier, boss, gates, debug overlay, alignment at 1/5/10/25/50 (`07-alignment-*`), the off-axis miss (`08-off-axis-miss`) and edge drags (`09-edge-*`) to PNG through CanvasKit.
 
 `pnpm run typecheck` — must be clean.
+
+## Manual (device / Expo Go) — stages
+- Start a run: `STAGE 01` banner, first grunt pair appears, killing it shows **no** banner; after ~10 kills `STAGE CLEAR` then `STAGE 02` with the squad intact.
+- Dev panel → Stage 5: after the groups, `BOSS INCOMING` (~1.3 s) then the Warden; clearing the road before the boss dies must not advance; boss death → `STAGE CLEAR` → `STAGE 06`.
+- Dev panel → Stage 10: boss name reads HIGH WARDEN, escorts trickle in during the fight.
+- Defeat card shows the stage reached; RETRY restarts at Stage 1. Kill the app and relaunch: save persists (`squadfire.campaign`).
 
 ## Manual (device / Expo Go)
 1. Launch; every soldier faces the vanishing point, the block is straight and symmetric, tracers leave the rifles straight up the road and converge to the horizon.

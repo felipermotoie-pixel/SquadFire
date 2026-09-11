@@ -10,8 +10,7 @@
  *   when a projectile physically crosses a hitbox. The player aims by moving the squad.
  */
 import {
-  BOSS,
-  ENEMIES,
+  BOSS, ENEMIES,
   GATES,
   MODIFIER_CAPS,
   PROJECTILES,
@@ -20,9 +19,9 @@ import {
   SIM,
   SQUAD,
   VFX,
-  WEAPONS,
-} from './balance';
+  WEAPONS, } from './balance';
 import { createCamera, project, type CameraLayout } from './camera';
+import { STAGES, bossHpFor, stageConfig, stageEnemyCount, type StageConfig, type StageState } from './stages';
 import { anchorLimitFor, formationSlots } from './formation';
 import { emptyFrame, spriteFrame } from './sprite-geometry';
 import type {
@@ -70,6 +69,8 @@ const BUCKET_COUNT = BUCKET_ROWS * BUCKET_COLS;
 export interface GameOptions {
   seed?: number;
   initialSquad?: number;
+  /** Stage the run starts at (campaign continue). Default 1. */
+  startStage?: number;
   width?: number;
   height?: number;
 }
@@ -95,7 +96,14 @@ export class Game {
   /** Accumulated screen shake request (consumed by the renderer). */
   shake = 0;
 
-  wave = 1;
+  /** Player-facing progression: the current stage number (1-based). */
+  stage = 1;
+  stageState: StageState = 'INTRO';
+  stageConfig: StageConfig = stageConfig(1);
+  /** Seconds since the current stage started. */
+  stageTime = 0;
+  /** Run rewards (economy hooks; nothing spends them yet). */
+  run = { coins: 0, score: 0, stagesCleared: 0 };
   kills = 0;
   stats: GameStats = {
     shotsFired: 0,
@@ -121,9 +129,17 @@ export class Game {
   private nextSoldierId = 1;
   private nextEnemyId = 1;
   private nextGateId = 1;
-  private spawnTimer = 1.2;
   private gateTimer = GATES.firstAt;
   private bossSpawned = false;
+  // Stage spawn timeline cursor.
+  private seqIndex = 0;
+  private groupIndex = 0;
+  private groupSpawned = 0;
+  private groupLane = 0;
+  private spawnClock = 0;
+  private stateTimer = 0;
+  private escortTimer = 0;
+  private startStageAt = 1;
   private endTimer = -1;
   private accumulator = 0;
   private shotTimes: number[] = [];
@@ -140,6 +156,8 @@ export class Game {
     for (let i = 0; i < VFX.poolSize; i++) this.vfx.push(createVfx());
     for (let i = 0; i < VFX.popupPoolSize; i++) this.popups.push(createPopup());
     this.addSoldiers(opts.initialSquad ?? SQUAD.initialSize, false);
+    this.startStageAt = Math.max(1, Math.floor(opts.startStage ?? 1));
+    this.startStage(this.startStageAt);
     // Snap soldiers to their slots on start.
     for (const s of this.soldiers) {
       s.pos.x = s.slot.x;
@@ -200,7 +218,7 @@ export class Game {
 
   /** Advance the simulation by a variable frame delta using fixed sub-steps. */
   advance(dt: number): void {
-    if (this.phase !== 'playing' && this.phase !== 'victory' && this.phase !== 'defeat') return;
+    if (this.phase !== 'playing' && this.phase !== 'defeat') return;
     this.accumulator += Math.min(dt, 0.25);
     let steps = 0;
     while (this.accumulator >= SIM.fixedStep && steps < SIM.maxStepsPerFrame) {
@@ -341,7 +359,7 @@ export class Game {
   spawnEnemyGroup(count: number, centerX = (this.rng() - 0.5) * 1.1, y = ENEMIES.spawnY, eliteChance = 0): number {
     let spawned = 0;
     const cols = Math.min(6, Math.max(2, Math.ceil(Math.sqrt(count * 1.4))));
-    const lateral = 0.22;
+    const lateral = ENEMIES.groupLateralSpread;
     for (let i = 0; i < count; i++) {
       if (this.stats.activeEnemies + spawned >= ENEMIES.maxAlive) break;
       const col = i % cols;
@@ -358,14 +376,15 @@ export class Game {
 
   spawnEnemy(kind: EnemyKind, x: number, y: number): Enemy {
     const def = ENEMIES[kind];
+    const hp = Math.max(1, Math.round(def.hp * this.stageConfig.enemyHpMultiplier));
     const enemy: Enemy = {
       id: this.nextEnemyId++,
       alive: true,
       kind,
       pos: { x, y },
-      hp: def.hp,
-      maxHp: def.hp,
-      speed: def.speed * (0.9 + this.rng() * 0.2),
+      hp,
+      maxHp: hp,
+      speed: def.speed * this.stageConfig.enemySpeedMultiplier * (0.9 + this.rng() * 0.2),
       sizeVariation: 0.92 + this.rng() * 0.16,
       animPhase: this.rng() * Math.PI * 2,
       wanderPhase: this.rng() * Math.PI * 2,
@@ -379,16 +398,135 @@ export class Game {
 
   spawnBoss(): void {
     if (this.boss.active) return;
+    const cfg = this.stageConfig.boss ?? { tier: 'boss' as const, hpMultiplier: 1, attackIntervalMultiplier: 1, escortInterval: 0, escortSize: 0 };
+    const hp = bossHpFor(cfg);
     this.boss = createBoss();
     this.boss.active = true;
     this.boss.alive = true;
     this.boss.pos.x = 0;
     this.boss.pos.y = BOSS.spawnY;
-    this.boss.hp = BOSS.hp;
-    this.boss.maxHp = BOSS.hp;
-    this.boss.nextAttackIn = BOSS.attackInterval;
+    this.boss.hp = hp;
+    this.boss.maxHp = hp;
+    this.boss.attackIntervalScale = cfg.attackIntervalMultiplier;
+    this.boss.nextAttackIn = BOSS.attackInterval * cfg.attackIntervalMultiplier;
     this.bossSpawned = true;
-    this.pushEvent({ type: 'boss-spawn', message: 'WARDEN OF THE CAUSEWAY', shake: 0.5 });
+    this.escortTimer = cfg.escortInterval;
+    this.pushEvent({ type: 'boss-spawn', message: cfg.tier === 'major' ? 'HIGH WARDEN OF THE CAUSEWAY' : 'WARDEN OF THE CAUSEWAY', shake: 0.5 });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stage progression
+  // ---------------------------------------------------------------------------
+
+  /** True while any enemy (or the boss) is still on the road. Death animations count as gone. */
+  get activeEnemyCount(): number {
+    let n = 0;
+    for (const e of this.enemies) if (e.alive && e.death === 0) n++;
+    return n;
+  }
+
+  get isBossStage(): boolean {
+    return this.stageConfig.boss !== undefined;
+  }
+
+  /** Scheduled (non-escort) spawns of this stage that have not entered yet. */
+  get remainingScheduledSpawns(): number {
+    const cfg = this.stageConfig;
+    let n = 0;
+    for (let s = this.seqIndex; s < cfg.sequences.length; s++) {
+      const seq = cfg.sequences[s];
+      for (let k = s === this.seqIndex ? this.groupIndex : 0; k < seq.groups.length; k++) {
+        n += seq.groups[k].count - (s === this.seqIndex && k === this.groupIndex ? this.groupSpawned : 0);
+      }
+    }
+    return n;
+  }
+
+  get spawnSequenceFinished(): boolean {
+    return this.seqIndex >= this.stageConfig.sequences.length;
+  }
+
+  /** Developer-facing snapshot of the timeline cursor. */
+  get stageCursor(): { sequence: number; group: number; groupSpawned: number } {
+    return { sequence: this.seqIndex, group: this.groupIndex, groupSpawned: this.groupSpawned };
+  }
+
+  /**
+   * Begins a stage: banner, fresh spawn timeline, boss reset. Squad and run upgrades
+   * are preserved (STAGES.transition). Also used by the dev panel to jump stages.
+   */
+  startStage(stage: number): void {
+    this.stage = Math.max(1, Math.floor(stage));
+    this.stageConfig = stageConfig(this.stage);
+    this.stageState = 'INTRO';
+    this.stageTime = 0;
+    this.stateTimer = STAGES.introDuration;
+    this.seqIndex = 0;
+    this.groupIndex = 0;
+    this.groupSpawned = 0;
+    this.groupLane = 0;
+    this.spawnClock = this.stageConfig.sequences[0]?.startDelay ?? 0;
+    this.bossSpawned = false;
+    this.escortTimer = 0;
+    if (this.boss.active) this.boss = createBoss();
+    this.pushEvent({ type: 'stage-start', message: `STAGE ${this.stage}` });
+  }
+
+  /** Dev helper: removes every enemy on the road as if killed (no rewards). */
+  debugClearEnemies(): void {
+    for (const e of this.enemies) {
+      if (e.alive && e.death === 0) {
+        e.hp = 0;
+        e.death = 0.0001;
+        this.kills++;
+        this.stats.kills = this.kills;
+      }
+    }
+  }
+
+  private advanceSpawnTimeline(dt: number): void {
+    const cfg = this.stageConfig;
+    if (this.seqIndex >= cfg.sequences.length) return;
+    this.spawnClock -= dt;
+    // One enemy per tick at most keeps groups readable; the interval is short enough
+    // that a group still feels like one arrival.
+    while (this.spawnClock <= 0 && this.seqIndex < cfg.sequences.length) {
+      const seq = cfg.sequences[this.seqIndex];
+      const group = seq.groups[this.groupIndex];
+      if (this.groupSpawned === 0) {
+        this.groupLane = group.laneBias ?? (this.rng() - 0.5) * 1.1;
+      }
+      if (this.stats.activeEnemies < ENEMIES.maxAlive) {
+        const spread = ENEMIES.groupLateralSpread;
+        const slot = this.groupSpawned - (group.count - 1) / 2;
+        const x = clamp(this.groupLane + slot * spread * 0.55 + (this.rng() - 0.5) * 0.12, -0.92, 0.92);
+        this.spawnEnemy(group.kind, x, ENEMIES.spawnY + this.rng() * 0.15);
+      }
+      this.groupSpawned++;
+      if (this.groupSpawned >= group.count) {
+        this.groupSpawned = 0;
+        this.groupIndex++;
+        if (this.groupIndex >= seq.groups.length) {
+          this.groupIndex = 0;
+          this.seqIndex++;
+          this.spawnClock += cfg.sequences[this.seqIndex]?.startDelay ?? 0;
+          if (this.seqIndex >= cfg.sequences.length) return;
+        } else {
+          this.spawnClock += seq.betweenGroupDelay;
+        }
+      } else {
+        this.spawnClock += group.spawnInterval;
+      }
+    }
+  }
+
+  private completeStage(): void {
+    const cfg = this.stageConfig;
+    this.run.coins += Math.round(STAGES.rewards.stageClearCoins * cfg.rewardMultiplier);
+    this.run.stagesCleared++;
+    this.stageState = 'CLEARING';
+    this.stateTimer = STAGES.clearDuration;
+    this.pushEvent({ type: 'stage-clear', message: 'STAGE CLEAR' });
   }
 
   spawnGatePair(left: GateEffect, right: GateEffect, y = GATES.spawnY): void {
@@ -416,34 +554,64 @@ export class Game {
     this.updateGates(dt);
     this.updateVfx(dt);
 
-    if (this.phase === 'victory' || this.phase === 'defeat') {
+    if (this.phase === 'defeat') {
       this.endTimer += dt;
     }
   }
 
   private updateDirector(dt: number): void {
-    // Waves
-    const wave = 1 + Math.floor(this.kills / ENEMIES.killsPerWave);
-    if (wave !== this.wave) {
-      this.wave = wave;
-      this.pushEvent({ type: 'wave', message: `WAVE ${wave}` });
-    }
+    this.stageTime += dt;
+    const cfg = this.stageConfig;
+    const bossLive = this.boss.active && this.boss.alive;
 
-    // Enemy groups keep coming until the boss is down.
-    if (!this.boss.active || this.boss.alive) {
-      this.spawnTimer -= dt;
-      if (this.spawnTimer <= 0) {
-        const bossActive = this.boss.active && this.boss.alive;
-        const interval = Math.max(ENEMIES.spawnIntervalMin, ENEMIES.spawnIntervalBase - (this.wave - 1) * 0.3) * (bossActive ? 1.6 : 1);
-        this.spawnTimer = interval;
-        const size = Math.min(ENEMIES.groupSizeMax, ENEMIES.groupSizeBase + (this.wave - 1) * ENEMIES.groupSizePerWave);
-        this.spawnEnemyGroup(bossActive ? Math.ceil(size * 0.6) : size, undefined, undefined, this.wave >= 2 ? ENEMIES.eliteChanceFromWave2 : 0);
-      }
-    }
-
-    // Boss entrance
-    if (!this.bossSpawned && this.kills >= BOSS.killsToSpawn) {
-      this.spawnBoss();
+    switch (this.stageState) {
+      case 'INTRO':
+        this.stateTimer -= dt;
+        if (this.stateTimer <= 0) this.stageState = 'ACTIVE';
+        break;
+      case 'ACTIVE':
+        this.advanceSpawnTimeline(dt);
+        if (this.spawnSequenceFinished && this.activeEnemyCount === 0) {
+          if (cfg.boss && !this.bossSpawned) {
+            this.stageState = 'BOSS_WARNING';
+            this.stateTimer = STAGES.bossWarningDuration;
+            this.pushEvent({ type: 'boss-warning', message: 'BOSS INCOMING', shake: 0.2 });
+          } else {
+            this.completeStage();
+          }
+        }
+        break;
+      case 'BOSS_WARNING':
+        this.stateTimer -= dt;
+        if (this.stateTimer <= 0) {
+          this.spawnBoss();
+          this.stageState = 'BOSS_ACTIVE';
+        }
+        break;
+      case 'BOSS_ACTIVE':
+        if (bossLive && cfg.boss && cfg.boss.escortInterval > 0) {
+          this.escortTimer -= dt;
+          if (this.escortTimer <= 0) {
+            this.escortTimer = cfg.boss.escortInterval;
+            this.spawnEnemyGroup(cfg.boss.escortSize);
+          }
+        }
+        // Boss dead (death animation finished) and every escort cleared → stage done.
+        if (this.bossSpawned && !this.boss.alive && this.boss.death >= 1 && this.activeEnemyCount === 0) {
+          this.completeStage();
+        }
+        break;
+      case 'CLEARING':
+        this.stateTimer -= dt;
+        if (this.stateTimer <= 0) {
+          this.stageState = 'COMPLETE';
+          this.stateTimer = STAGES.transitionDuration;
+        }
+        break;
+      case 'COMPLETE':
+        this.stateTimer -= dt;
+        if (this.stateTimer <= 0) this.startStage(this.stage + 1);
+        break;
     }
 
     // Gates
@@ -682,6 +850,7 @@ export class Game {
       e.death = 0.0001;
       this.kills++;
       this.stats.kills = this.kills;
+      this.run.score += e.kind === 'elite' ? STAGES.rewards.eliteKillScore : STAGES.rewards.killScore;
       this.spawnVfx(e.kind === 'elite' ? 'death-elite' : 'death', e.pos.x, e.pos.y, 0.15, 0, e.sizeVariation);
       if (e.kind === 'elite') this.spawnPopup(e.pos.x, e.pos.y, 0.5, Math.round(p.damage), true);
     }
@@ -750,11 +919,7 @@ export class Game {
     if (b.hitFlash > 0) b.hitFlash -= dt;
     if (!b.alive) {
       b.death += dt / VFX.bossDeathLifetime;
-      if (b.death >= 1 && this.phase === 'playing') {
-        this.phase = 'victory';
-        this.endTimer = 0;
-        this.pushEvent({ type: 'victory', message: 'CAUSEWAY SECURED' });
-      }
+      if (b.death > 1) b.death = 1;
       return;
     }
     if (this.phase !== 'playing') return;
@@ -790,7 +955,7 @@ export class Game {
         const hit = Math.abs(this.anchorX - b.pos.x) < BOSS.slamHalfWidth;
         this.pushEvent({ type: 'boss-slam', shake: hit ? 0.9 : 0.5 });
         if (hit) this.loseSoldier('slam');
-        b.nextAttackIn = b.phase === 2 ? BOSS.attackIntervalPhase2 : BOSS.attackInterval;
+        b.nextAttackIn = (b.phase === 2 ? BOSS.attackIntervalPhase2 : BOSS.attackInterval) * b.attackIntervalScale;
       }
     } else if (b.pos.y <= BOSS.holdY + 0.01) {
       b.nextAttackIn -= dt;
@@ -997,6 +1162,7 @@ function createBoss(): Boss {
     hitFlash: 0,
     telegraph: 0,
     nextAttackIn: BOSS.attackInterval,
+    attackIntervalScale: 1,
     phase: 1,
     death: 0,
     patrolTargetX: 0.35,

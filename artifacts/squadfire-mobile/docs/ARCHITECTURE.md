@@ -9,13 +9,15 @@ Expo (SDK 57) portrait mobile squad shooter. One artifact: `artifacts/squadfire-
 | Simulation | `game/` | Pure TypeScript, no React/Skia imports. Deterministic (seeded RNG), fixed 1/120 s substeps. |
 | Renderer | `components/battlefield/SceneRenderer.ts` | Imperative Skia drawing of a full frame from a `Game` snapshot. No React state. |
 | Host | `components/battlefield/Battlefield.tsx` | One Skia `<Canvas>` + `<Picture>`; requestAnimationFrame loop steps the sim, records a picture per frame, publishes stats. |
-| HUD / input | `components/GameScreen.tsx` | Minimal React HUD (wave, squad, boss bar, pause), drag input, notices, pause/end cards, dev panel (`__DEV__` only). |
+| Stage data | `game/stages.ts` | `StageConfig` (hand-authored 1–5, generated 6+), boss cadence, transition rules, rewards. |
+| Campaign save | `game/campaign-progress.ts`, `game/campaign.ts` | Pure progress model + migration; AsyncStorage wrapper. |
+| HUD / input | `components/GameScreen.tsx` | Minimal React HUD (stage pill, squad, boss bar, pause), campaign save on stage clear, drag input, notices, pause/end cards, dev panel (`__DEV__` only). |
 | Routes | `app/index.tsx`, `app/index.web.tsx` | Native renders the game directly; web wraps it in `WithSkiaWeb` so CanvasKit loads before the renderer module is evaluated. |
 
 ## Data flow per frame
 
 1. `Battlefield` rAF tick → `game.advance(dt)` (clamped, split into fixed substeps).
-2. Engine updates: input/anchor → formation slots → soldiers (cadence, `fireShot` straight along `ROAD_FORWARD`) → projectiles (grid collision) → enemies/boss → gates → VFX/popups → wave director → stats.
+2. Engine updates: input/anchor → formation slots → soldiers (cadence, `fireShot` straight along `ROAD_FORWARD`) → projectiles (grid collision) → enemies/boss → gates → VFX/popups → stage director (state machine over `StageConfig`, see `STAGE_SYSTEM.md`) → stats.
 3. Each `fireShot` creates one `ShotEvent` (soldier id, muzzle world position, direction = road forward). The event spawns a projectile, muzzle flash VFX, recoil, and is forwarded to `onShot` (audio hook / tests). There is no targeting module.
 4. Renderer records a `SkPicture` from the game state; the shared value swap redraws the canvas without a React render.
 5. Every ~120 ms (or immediately when events are pending) `onSync(game)` lets the HUD drain events and refresh its state.
@@ -36,7 +38,7 @@ Expo (SDK 57) portrait mobile squad shooter. One artifact: `artifacts/squadfire-
 
 ## Events
 
-`game.drainEvents()` returns `GameEvent`s (`gate`, `wave`, `boss-spawn`, `boss-phase`, `boss-slam`, `boss-defeated`, `soldier-lost`, `victory`, `defeat`) with optional `message` (banner text) and `shake` (screen shake magnitude). The HUD turns them into notices and haptics; the renderer never reads them.
+`game.drainEvents()` returns `GameEvent`s (`gate`, `stage-start`, `stage-clear`, `boss-warning`, `boss-spawn`, `boss-phase`, `boss-slam`, `boss-defeated`, `soldier-lost`, `defeat`) with optional `message` (banner text) and `shake` (screen shake magnitude). The HUD turns them into notices and haptics; the renderer never reads them.
 
 ## Tooling
 

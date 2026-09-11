@@ -66,7 +66,7 @@ export interface Soldier {
   shotsFired: number;
 }
 
-export type EnemyKind = 'grunt' | 'elite';
+export type EnemyKind = 'grunt' | 'runner' | 'elite';
 
 export interface Enemy {
   id: number;
@@ -102,6 +102,8 @@ export interface Boss {
   telegraph: number;
   /** Seconds until the next attack wind-up. */
   nextAttackIn: number;
+  /** Multiplies the balance attack intervals for this encounter (stage-dependent cadence). */
+  attackIntervalScale: number;
   /** Phase 1 or 2 (phase 2 starts at 50% HP). */
   phase: 1 | 2;
   death: number;
@@ -201,16 +203,16 @@ export interface DamagePopup {
   crit: boolean;
 }
 
-export type GamePhase = 'playing' | 'paused' | 'victory' | 'defeat';
+export type GamePhase = 'playing' | 'paused' | 'defeat';
 
 export interface GameStats {
-  /** Total shots fired since the stage started. */
+  /** Total shots fired since the run started. */
   shotsFired: number;
   /** Shots fired in the last second (rolling window). */
   shotsPerSecond: number;
   hits: number;
   kills: number;
-  /** Time spent in the current stage (seconds, excluding pause). */
+  /** Time spent in the run (seconds, excluding pause). */
   elapsed: number;
   activeProjectiles: number;
   activeEnemies: number;
@@ -245,9 +247,10 @@ export interface GameEvent {
     | 'boss-slam'
     | 'boss-defeated'
     | 'soldier-lost'
-    | 'victory'
     | 'defeat'
-    | 'wave';
+    | 'stage-start'
+    | 'stage-clear'
+    | 'boss-warning';
   message?: string;
   /** Screen shake request in [0, 1]. */
   shake?: number;

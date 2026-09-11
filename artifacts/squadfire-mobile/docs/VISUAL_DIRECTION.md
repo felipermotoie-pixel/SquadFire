@@ -20,4 +20,4 @@ Generated 2.5D sprites, alpha-trimmed. Anchors and muzzles are declared in `game
 Key light from top-left: contact shadow ellipses under every unit, barrier top faces brightest, right inner faces lit. Haze fades the far road into the horizon.
 
 ## HUD
-Minimal: wave pill, squad count, pause; boss name + bar only while the boss is alive; transient banners for gates/waves/boss events. No counters or debug text in gameplay; the debug overlay is dev-only.
+Minimal: stage pill (`STAGE 03`), squad count, pause; boss name + bar only while the boss is alive; transient banners for gates/stage start/stage clear/boss events. No counters or debug text in gameplay; the debug overlay is dev-only.

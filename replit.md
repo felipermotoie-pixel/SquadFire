@@ -39,7 +39,7 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 
 ## Product
 
-Single stage vertical slice: waves of grunts/elites, three gate pairs, boss with telegraphed slams and two phases, victory/defeat, pause with reduced-shake toggle. No shop/economy/campaign yet (explicitly out of scope).
+Continuous run of **Stages** (`artifacts/squadfire-mobile/docs/STAGE_SYSTEM.md`): each stage = several spawn groups, cleared only when all scheduled enemies are dead; boss every 5th stage (major every 10th) after a `BOSS INCOMING` warning; squad/upgrades persist between stages; defeat card shows the stage reached. Enemy kinds grunt/runner/elite, gate pairs keep coming across stages. Campaign progress saved via AsyncStorage (stage terminology only — never "wave"). No shop/economy/stage-select yet (explicitly out of scope); runs start at Stage 1.
 
 ## User preferences
 

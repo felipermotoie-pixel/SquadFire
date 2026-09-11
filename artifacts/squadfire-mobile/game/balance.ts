@@ -87,8 +87,14 @@ export const MODIFIER_CAPS = {
   damageMax: 3,
 };
 
+/**
+ * Base enemy archetypes. Stage configs (game/stages.ts) scale hp/speed per stage;
+ * these are the stage-5 reference values.
+ */
 export const ENEMIES = {
   grunt: { hp: 30, speed: 0.42, hitRadius: 0.2, depthTolerance: 0.32 },
+  /** Fast, fragile flanker: crosses the road in ~9 s instead of ~14 s. */
+  runner: { hp: 18, speed: 0.66, hitRadius: 0.17, depthTolerance: 0.3 },
   elite: { hp: 110, speed: 0.34, hitRadius: 0.26, depthTolerance: 0.38 },
   /** Never keep more than this many enemies alive. */
   maxAlive: 300,
@@ -96,20 +102,12 @@ export const ENEMIES = {
   spawnDepthSpread: 1.1,
   /** Forward distance at which an enemy reaches the squad line. */
   contactY: 0.08,
-  /** Kills needed to advance to the next wave. */
-  killsPerWave: 22,
-  /** Time between groups at wave 1; shrinks with each wave. */
-  spawnIntervalBase: 2.4,
-  spawnIntervalMin: 0.9,
-  groupSizeBase: 5,
-  groupSizePerWave: 2,
-  groupSizeMax: 18,
-  eliteChanceFromWave2: 0.16,
+  /** Lateral spread of a spawn group around its lane centre. */
+  groupLateralSpread: 0.22,
 };
 
+/** Boss reference values. Per-stage multipliers live in game/stages.ts (bossFor). */
 export const BOSS = {
-  /** The boss enters after this many kills. */
-  killsToSpawn: 70,
   hp: 2600,
   hitRadius: 0.62,
   depthTolerance: 0.7,

@@ -1,9 +1,15 @@
 # SquadFire — Project State
 
-Updated: 2026-09-10
+Updated: 2026-09-11
 
 ## Version
-`v0.3.2` — Straight Fire + compact formation. History: `v0.3.0` straight-fire rework, `v0.3.1` review fixes, `v0.3.2` projectile-perspective audit + compact formation + whole-formation road clamp. Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
+`v0.3.4` — Stage-based progression. History: `v0.3.3` review fix (ranks close the frame a soldier is lost), `pre-stage-system` checkpoint, `v0.3.0` straight-fire rework, `v0.3.1` review fixes, `v0.3.2` projectile-perspective audit + compact formation + whole-formation road clamp. Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
+
+## v0.3.4 — what changed
+- Player-facing progression is now the **Stage** (`docs/STAGE_SYSTEM.md`): data-driven `StageConfig` (1–5 authored, 6+ generated, 100+ supported), state machine INTRO → ACTIVE → (BOSS_WARNING → BOSS_ACTIVE) → CLEARING → COMPLETE, stage completes only when all scheduled spawns are dead. Boss every 5 stages (major every 10) with a `BOSS INCOMING` warning. Squad/upgrades persist; runs are continuous (no victory screen; defeat card shows the stage reached).
+- New `runner` enemy kind. Kill counter is no longer the progression driver. Rewards tracked in `Game.run` with boss multipliers.
+- Campaign save (`CampaignProgress`, AsyncStorage) with legacy wave-field migration; runs still start at Stage 1 (no menu yet).
+- Debug overlay prints the stage cursor; dev panel gained Clear enemies / Next stage / Stage 5 / Stage 10 / Reset save. 10 new stage checks; render harness has stage 3 and stage 5 boss scenes.
 
 ## v0.3.2 — what changed
 - Audited the projectile coordinate system: projectiles are world-space (constant `ROAD_FORWARD` velocity), convergence on screen comes from the pinhole projection only. Tracer tail lengthened (0.05 → 0.09) so the slant is legible. No steering added.
@@ -22,13 +28,14 @@ Updated: 2026-09-10
 - Skia-rendered 2.5D causeway: perspective road to the horizon, animated water, volumetric barrier modules, painted coastal horizon, haze, contact shadows.
 - Generated character art (blue trooper, red grunt / tinted elite, crimson Warden) with per-sprite anchor + muzzle metadata.
 - Per-soldier straight firing: independent timers with golden-ratio phase offsets, one ShotEvent → one projectile from the drawn muzzle along the road, pooled projectiles/VFX.
-- Gates as world objects (huge numbers, side selection by anchor position), wave director, boss with telegraphed slams and two phases, victory/defeat.
+- Gates as world objects (huge numbers, side selection by anchor position), stage director, boss with telegraphed slams and two phases, defeat card.
 - Minimal HUD, pause card with reduced-shake toggle, transient event banners, haptics.
-- Dev-only panel (long-press WAVE pill): scenarios 1/3/10/+5/25/50 soldiers, +25 % FR, ×1.5 DMG, Boss ×20, Stress 50/300, Off-axis wall, Lane crosser, scripted toggle, on-canvas debug overlay.
-- Headless sim test suite (37 checks incl. straight-fire Tests A–E, §44 acceptance and perf sweeps) and headless CanvasKit render harness.
+- Dev-only panel (long-press STAGE pill): scenarios 1/3/10/+5/25/50 soldiers, +25 % FR, ×1.5 DMG, Boss ×20, Stress 50/300, Off-axis wall, Lane crosser, scripted toggle, on-canvas debug overlay.
+- Headless sim test suite (47 fire checks + 10 stage checks) and headless CanvasKit render harness.
 - Docs set in `docs/`.
 
 ## Not done / known gaps
+- Coins/score are tracked per run but nothing spends them (shop out of scope). No stage select / continue: every run starts at Stage 1 by design until the menu phase.
 - No device FPS measurement yet (only headless sim cost and CPU raster timings). See `TEST_PLAN.md`.
 - No audio playback; `ShotAudioAggregator` only batches shot events per frame.
 - Enemies do not shoot; pressure is contact + boss slams only.
