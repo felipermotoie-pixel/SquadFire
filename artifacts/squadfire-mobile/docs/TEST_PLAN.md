@@ -1,11 +1,11 @@
 # SquadFire — Test Plan
 
 ## Automated (headless)
-`pnpm run test:sim` — `game/tests/fire-system.test.ts`, 46 checks:
+`pnpm run test:sim` — `game/tests/fire-system.test.ts`, 47 checks:
 
 | Group | What it proves |
 | --- | --- |
-| Test A — static squad | 10 soldiers fire with no enemies; every shot direction is exactly `ROAD_FORWARD`; each soldier keeps one fixed lane; lane count = formation columns (5); in-flight projectiles never leave their lane. |
+| Test A — static squad | 10 soldiers fire with no enemies; every shot direction is exactly `ROAD_FORWARD`; each soldier keeps one fixed lane; lane count = formation columns (4 for 10 soldiers); in-flight projectiles never leave their lane. |
 | Test B — off-axis | Enemy at x 0.7, squad at 0: 0 hits over 4 s. After `setInputX(0.7)` hits register. |
 | Miss lifetime | A missed bullet survives until `ROAD_LENGTH + farExit`. |
 | Test C — lane crosser | An enemy scripted across the road is hit only while `|enemy.x − lane| ≤ hitRadius`. |
@@ -15,7 +15,7 @@
 | Boss honesty | Squad parked at 0.7, boss at −0.4: no damage, all shots straight; damage only once the lane is dragged onto the hitbox. Patrol stays inside ±0.5, ≤ 0.28 u/s, with dwell, regardless of squad position. |
 | Formation 1/5/10/25/50 | Straight symmetric block: every row sums to x = 0, width ≤ 1.0, ≤ 5 columns, rear row ≥ −0.75, anchor limit + half-width ≤ road half-width. |
 | Compact formation | Columns non-decreasing over 1..50 and capped at 5; brief shapes 1 / 2 / 1+2 / 2+2 / 3+2 / 3+3 / 3×3 / 5×4. Test A: 5 soldiers = 3×2, width 0.42, inside road. Tests B/C: dragged fully left/right the outermost soldier stays at |x| ≤ 0.86 and fire stays straight. Tests D/E: 20 and 50 soldiers add rows, width 0.84, safe range ±0.44, 20/50 independent shooters. Perspective: projectile world x constant while its projected screen offset shrinks toward the vanishing point. |
-| Formation growth | 5/6/7/10/11/13 soldiers all keep 5 columns (growth never removes lanes). A 1-soldier squad parked at ±0.72 that grows to 5 is clamped to ±0.45 on the same frame; outermost slot stays ≤ road half-width. |
+| Formation growth | A 1-soldier squad parked at ±0.72 that grows to 5 is clamped to the 3-column range (±0.65) on the same frame; outermost slot stays inside the margin. Losing a soldier at the edge (20→19, 10→9, 5→4, 2→1) never pushes survivors past the margin during the death animation. |
 | Cadence | 1 soldier ≈ 2/s with period 0.5 s; 3 soldiers never fire on the same substep; 10 soldiers ≈ 20/s with ≤ 3 per substep. |
 | §44 acceptance | 1 soldier → ~20 shots/10 s; 5 → ~100; +25 % FR → ~12.5 shots/s; five distinct shooters. |
 | Muzzle | Shot origin within 0.3 of the owner's x (currently 0.036). |
@@ -40,4 +40,4 @@
 Use the dev overlay. Record fps, frame ms, peak ms for: 1, 10, 25, 50 soldiers; 100 and 300 enemies; boss with 50 soldiers (500+ projectiles). Targets: 60 fps sustained, no growth of frame time over 30 minutes (pools are fixed size; watch `peak`).
 
 ## Status
-Automated: pass (46/46). Typecheck: clean. Headless renders reviewed for alignment at 1/5/10/25/50 and the off-axis miss. Manual device pass: **not yet executed in this environment** (no device attached).
+Automated: pass (47/47). Typecheck: clean. Headless renders reviewed for alignment at 1/5/10/25/50 and the off-axis miss. Manual device pass: **not yet executed in this environment** (no device attached).

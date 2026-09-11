@@ -326,6 +326,25 @@ for (const n of [20, 50]) {
   );
 }
 
+// Losing soldiers at the edge never pushes survivors past the margin ---------------
+{
+  const safe = SQUAD.roadHalfWidth - SQUAD.formationRoadMargin;
+  let worst = 0;
+  for (const n of [20, 10, 5, 2]) {
+    const g = makeGame(n);
+    g.setInputX(5);
+    run(g, 2);
+    g.loseSoldier('contact');
+    g.setInputX(5); // keep pushing against the (now wider) clamp during the death animation
+    for (let i = 0; i < 120; i++) {
+      g.advance(1 / 120);
+      g.setInputX(5);
+      for (const s of g.soldiers) if (s.alive && s.death === 0) worst = Math.max(worst, Math.abs(s.pos.x));
+    }
+  }
+  check('Formation: losing a soldier at the edge keeps survivors inside the margin', worst <= safe + 0.02, `worst survivor |x| ${worst.toFixed(3)} vs safe ${safe.toFixed(2)} across 20→19, 10→9, 5→4, 2→1`);
+}
+
 // Perspective: world-straight lanes converge on screen, without steering ---------
 {
   const g = makeGame(5);

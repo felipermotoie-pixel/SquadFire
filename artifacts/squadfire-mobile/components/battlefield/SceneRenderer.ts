@@ -1241,18 +1241,18 @@ export class SceneRenderer {
         canvas.drawLine(m.x, m.y - 8, m.x, m.y + 8, s);
       }
       // Formation footprint: outermost soldier bounds (feet) as a perspective quad.
-      const alive = game.soldiers.filter((x) => x.alive);
-      if (alive.length > 0) {
-        let minX = Infinity;
-        let maxX = -Infinity;
-        let minY = Infinity;
-        let maxY = -Infinity;
-        for (const x of alive) {
-          minX = Math.min(minX, x.pos.x);
-          maxX = Math.max(maxX, x.pos.x);
-          minY = Math.min(minY, x.pos.y);
-          maxY = Math.max(maxY, x.pos.y);
-        }
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (const x of game.soldiers) {
+        if (!x.alive) continue;
+        minX = Math.min(minX, x.pos.x);
+        maxX = Math.max(maxX, x.pos.x);
+        minY = Math.min(minY, x.pos.y);
+        maxY = Math.max(maxY, x.pos.y);
+      }
+      if (minX <= maxX) {
         const halfSprite = (PLAYER_SOLDIER_VISUAL.height * PLAYER_SOLDIER_VISUAL.aspect) / 2;
         this.quad(canvas, cam, minX - halfSprite, maxX + halfSprite, minY, maxY, s, 'rgba(120,220,255,0.8)');
       }

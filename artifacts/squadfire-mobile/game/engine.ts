@@ -269,6 +269,10 @@ export class Game {
       s.death = 0.0001;
       this.spawnVfx('soldier-lost', s.pos.x, s.pos.y, 0.25, 0, 1);
       this.pushEvent({ type: 'soldier-lost', shake: reason === 'slam' ? 0.7 : 0.35 });
+      // Survivors close ranks now, not after the death animation: the clamp already
+      // uses the smaller squad's (wider) range, so slots must shrink in the same frame
+      // or a squad parked at the edge could briefly reach past the margin.
+      this.reassignSlots();
       break;
     }
     if (this.squadSize === 0 && this.phase === 'playing') {
