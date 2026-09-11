@@ -858,6 +858,8 @@ export class Game {
 
   private damageBoss(p: Projectile): void {
     const b = this.boss;
+    // Several projectiles can reach the body in the frame it dies; only the first kill counts.
+    if (!b.alive) return;
     b.hp -= p.damage;
     b.hitFlash = 0.06;
     this.stats.hits++;
