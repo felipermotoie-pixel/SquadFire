@@ -1,3 +1,4 @@
 - [Skia on Expo Go + web](skia-expo-web.md) — pin Skia to Expo Go's build; web needs matching canvaskit + lazy import; measureText missing on web; screenshot tool has no WebGL.
 - [RN 0.86 style/API gotchas](rn-086-style-api.md) — absoluteFill only, pointerEvents via style, exclude Node scripts from app tsconfig.
 - [Formation clamp sync](formation-clamp-sync.md) — any squad-size change must reassign slots and clamp anchor+target the same frame, or edge-parked squads leave the road.
+- [Skia shader masking](skia-shader-masking.md) — Modulate blackens; compose with MakeBlend(SrcIn); noise dominates CPU harness cost; re-measure generated art anchors.
