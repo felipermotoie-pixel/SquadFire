@@ -25,16 +25,18 @@ import {
   type SkColorFilter,
   type SkFont,
   type SkImage,
+  type SkPaint,
   type SkShader,
 } from '@shopify/react-native-skia';
 
-import { BOSS, ENEMIES, GATES, ROAD_FORWARD, ROAD_LENGTH, ROAD_RIGHT } from '@/game/balance';
+import { BOSS, ENEMIES, GATES, ROAD_FORWARD, ROAD_LENGTH, ROAD_RIGHT, SQUAD } from '@/game/balance';
 
 /** How far (world units) the causeway is drawn toward the horizon. Gameplay stays within ROAD_LENGTH. */
 const ROAD_FAR = 40;
 const UNIT_RECT = Skia.XYWHRect(0, 0, 1, 1);
 import { project, unitPx, type CameraLayout } from '@/game/camera';
 import { gateBigNumber, gateSmallLabel, type Game } from '@/game/engine';
+import { roadHalfWidthAt } from '@/game/formation';
 import { emptyFrame, spriteFrame, type SpriteFrame } from '@/game/sprite-geometry';
 import type { Enemy, Gate, Soldier } from '@/game/types';
 import { BOSS_VISUAL, ENEMY_ELITE_VISUAL, ENEMY_GRUNT_VISUAL, PLAYER_SOLDIER_VISUAL } from '@/game/visuals';
@@ -895,7 +897,7 @@ export class SceneRenderer {
       const h = p.h;
       const head = project(cam, p.x, p.y);
       const hu = unitPx(cam, p.y);
-      const tailLen = Math.min(0.05, p.traveled / Math.max(1e-6, Math.hypot(p.vx, p.vy)));
+      const tailLen = Math.min(0.09, p.traveled / Math.max(1e-6, Math.hypot(p.vx, p.vy)));
       const tx = p.x - p.vx * tailLen;
       const ty = p.y - p.vy * tailLen;
       const tail = project(cam, tx, ty);
@@ -1187,6 +1189,19 @@ export class SceneRenderer {
   // Developer overlay (never shown in production)
   // ---------------------------------------------------------------------------
 
+  /** Ground-plane rectangle in world coordinates, projected to a perspective quad. */
+  private quad(canvas: SkCanvas, cam: CameraLayout, x0: number, x1: number, y0: number, y1: number, s: SkPaint, color: string): void {
+    const a = project(cam, x0, y0);
+    const b = project(cam, x1, y0);
+    const c = project(cam, x1, y1);
+    const d = project(cam, x0, y1);
+    s.setColor(Skia.Color(color));
+    canvas.drawLine(a.x, a.y, b.x, b.y, s);
+    canvas.drawLine(b.x, b.y, c.x, c.y, s);
+    canvas.drawLine(c.x, c.y, d.x, d.y, s);
+    canvas.drawLine(d.x, d.y, a.x, a.y, s);
+  }
+
   private drawDebug(canvas: SkCanvas, game: Game): void {
     const cam = game.cam;
     const s = this.stroke;
@@ -1207,7 +1222,7 @@ export class SceneRenderer {
       s.setColor(Skia.Color('rgba(255,255,255,0.8)'));
       canvas.drawLine(a0.x, a0.y, ar.x, ar.y, s);
       s.setStrokeWidth(1);
-      // Anchor clamp range for the current squad width.
+      // Safe movement bounds for the anchor (road − formation half-width − margin).
       const lim = game.anchorLimit;
       const l0 = project(cam, -lim, 0);
       const l1 = project(cam, lim, 0);
@@ -1215,10 +1230,36 @@ export class SceneRenderer {
       canvas.drawLine(l0.x, l0.y + 6, l1.x, l1.y + 6, s);
       canvas.drawLine(l0.x, l0.y, l0.x, l0.y + 12, s);
       canvas.drawLine(l1.x, l1.y, l1.x, l1.y + 12, s);
+      // Road left/right limits at the squad's depth (world ±roadHalfWidth), as ticks.
+      const road = roadHalfWidthAt(0);
+      for (const side of [-1, 1]) {
+        const e = project(cam, side * road, 0);
+        s.setColor(Skia.Color('rgba(255,90,90,0.9)'));
+        canvas.drawLine(e.x, e.y - 14, e.x, e.y + 14, s);
+        const m = project(cam, side * (road - SQUAD.formationRoadMargin), 0);
+        s.setColor(Skia.Color('rgba(255,200,90,0.9)'));
+        canvas.drawLine(m.x, m.y - 8, m.x, m.y + 8, s);
+      }
+      // Formation footprint: outermost soldier bounds (feet) as a perspective quad.
+      const alive = game.soldiers.filter((x) => x.alive);
+      if (alive.length > 0) {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const x of alive) {
+          minX = Math.min(minX, x.pos.x);
+          maxX = Math.max(maxX, x.pos.x);
+          minY = Math.min(minY, x.pos.y);
+          maxY = Math.max(maxY, x.pos.y);
+        }
+        const halfSprite = (PLAYER_SOLDIER_VISUAL.height * PLAYER_SOLDIER_VISUAL.aspect) / 2;
+        this.quad(canvas, cam, minX - halfSprite, maxX + halfSprite, minY, maxY, s, 'rgba(120,220,255,0.8)');
+      }
       if (font) {
         this.textPaint.setColor(Skia.Color(PALETTE.debugText));
         canvas.drawText(`roadForward`, af.x + 4, af.y, this.textPaint, font);
-        canvas.drawText(`roadRight  anchor ${game.anchorX.toFixed(2)} / ±${lim.toFixed(2)}`, ar.x + 4, ar.y + 4, this.textPaint, font);
+        canvas.drawText(`roadRight  anchor ${game.anchorX.toFixed(2)} / safe ±${lim.toFixed(2)}  road ±${road.toFixed(2)}`, ar.x + 4, ar.y + 4, this.textPaint, font);
       }
     }
 

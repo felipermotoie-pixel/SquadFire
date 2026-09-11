@@ -87,6 +87,10 @@ const scenarios: Scenario[] = [
       g.setSquadSize(n);
     },
   })),
+  // Edge tests B/C: 5 soldiers dragged fully left / right, and 20 soldiers dragged right.
+  { name: '09-edge-left-05', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadSize(5); g.setInputX(-5); } },
+  { name: '09-edge-right-05', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadSize(5); g.setInputX(5); } },
+  { name: '09-edge-right-20', seconds: 2.5, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadSize(20); g.setInputX(5); } },
   {
     // Test B in pictures: squad parked left, enemy wall on the right — lanes miss.
     name: '08-off-axis-miss',

@@ -6,8 +6,8 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 
 - Workflow `artifacts/squadfire-mobile: expo` — Expo dev server (Expo Go + web preview). Web needs WebGL.
 - `pnpm --filter @workspace/squadfire-mobile run typecheck` — TypeScript for the game.
-- `pnpm --filter @workspace/squadfire-mobile run test:sim` — headless simulation/firing tests (39 checks: straight-fire Tests A–E, boss/enemy honesty, formation alignment 1–50, cadence, brief §44 acceptance, perf sweeps and a 500-projectile stress case).
-- `pnpm --filter @workspace/squadfire-mobile run render:preview` — renders 12 scenario PNGs (incl. alignment at 1/5/10/25/50 and the off-axis miss) to `/tmp/squadfire-preview/` through CanvasKit; use this for visual review when a screenshot tool lacks WebGL.
+- `pnpm --filter @workspace/squadfire-mobile run test:sim` — headless simulation/firing tests (46 checks: straight-fire Tests A–E, compact-formation/edge/perspective checks, boss/enemy honesty, formation alignment 1–50, cadence, brief §44 acceptance, perf sweeps and a 500-projectile stress case).
+- `pnpm --filter @workspace/squadfire-mobile run render:preview` — renders 15 scenario PNGs (incl. alignment at 1/5/10/25/50, off-axis miss, edge drags) to `/tmp/squadfire-preview/` through CanvasKit; use this for visual review when a screenshot tool lacks WebGL.
 - `pnpm run typecheck` — full workspace typecheck.
 - The `api-server` / `api-spec` / `db` packages are the untouched monorepo template; the game is fully client-side (no `DATABASE_URL` needed).
 
@@ -33,7 +33,7 @@ Portrait mobile squad shooter (Expo, iOS/Android, premium casual): steer a growi
 - Simulation is deterministic (seeded RNG, fixed 1/120 s substeps) and has no React/Skia imports so it runs headless in Node for tests.
 - One soldier = one muzzle = one ShotEvent = one projectile. Squad size is applied exactly once (as shooter count); damage/fire-rate come only from capped gate multipliers.
 - **Straight fire (v0.3.0):** no auto-targeting anywhere. Every projectile leaves its muzzle along `ROAD_FORWARD`; the drag is the aim; damage is collision-only; enemies/boss never drift toward the squad. Do not reintroduce target lookup, aim assist, or homing.
-- Soldiers always face the vanishing point; sprite heading is never derived from drag/target/slot. Asset tilt is corrected with `baseVisualRotationOffset` in `visuals.ts`, never by rotating the formation. Formation = straight symmetric block, 5-column width cap, rows added behind.
+- Soldiers always face the vanishing point; sprite heading is never derived from drag/target/slot. Asset tilt is corrected with `baseVisualRotationOffset` in `visuals.ts`, never by rotating the formation. Formation = compact straight symmetric block: spacing 0.21, columns unlock at 2/5/10/20 soldiers, cap 5 (0.84 wide), rows added behind, growth never removes a lane. Drag clamp = road − formation half-width − margin. Projectiles are world-space; screen convergence is projection only — never widen hitboxes or steer to "fix" perspective.
 - Sprite geometry is shared by sim and renderer so projectiles always leave the drawn muzzle.
 - World units: x in road half-widths (±1 = barriers), y forward (0 squad line, 6 spawn), perspective camera in `game/camera.ts`.
 

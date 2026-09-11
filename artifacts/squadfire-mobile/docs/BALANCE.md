@@ -25,10 +25,10 @@ Boss (2600 HP): 20 soldiers ≈ 6.5 s time-to-kill at base mods with all lanes o
 - Gates: first at 9 s, then every 12 s → typically 3 pairs before the boss.
 
 ## Hit efficiency
-There is no targeting and no overkill bookkeeping any more: `hitEfficiency` is entirely the player's positioning. A grunt (hit radius 0.2) standing on a lane is crossed by one or two of the five lanes (0.25 apart); a 50-soldier block puts 10 bullets/s into each lane. Boss hit radius 0.62 spans up to five lanes when the block is centred on it.
+There is no targeting and no overkill bookkeeping: `hitEfficiency` is entirely the player's positioning. A grunt (hit radius 0.2) standing in the block is crossed by one or two lanes (0.21 apart); a 50-soldier block puts 10 bullets/s into each of its 5 lanes. Boss hit radius 0.62 spans the whole 0.84-wide block when centred on it.
 
 ## Formation and reach
-`SQUAD.formationMaxColumns` 5 × `formationHorizontalSpacing` 0.25 → a full block is 1.0 wide and can reach ±0.45 (`roadHalfWidth` 0.95 − half-width 0.5); a single soldier reaches ±0.72 (`anchorLimit`). Wider blocks trade reach for density.
+Columns unlock at 2/5/10/20 soldiers and cap at 5 × 0.21 = 0.84 wide. Safe anchor range = `roadHalfWidth (1.0) − halfWidth − formationRoadMargin (0.14)`: ±0.72 for 1 soldier, ±0.65 for 5 (3 columns), ±0.55 for 10, ±0.44 for 20–50. A wider block trades reach for lane count and density.
 
 ## Tuning knobs worth touching first
 1. `BOSS.killsToSpawn` — stage length.

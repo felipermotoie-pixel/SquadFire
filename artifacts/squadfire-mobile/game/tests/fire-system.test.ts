@@ -13,7 +13,7 @@
  * muzzle alignment, performance and the 500-projectile stress case.
  */
 import { Game } from '../engine';
-import { BOSS, ENEMIES, PROJECTILES, ROAD_LENGTH, SQUAD, WEAPONS } from '../balance';
+import { BOSS, ENEMIES, PROJECTILES, ROAD_FORWARD, ROAD_LENGTH, SQUAD, WEAPONS } from '../balance';
 import { anchorLimitFor, formationLayout, formationSlots } from '../formation';
 import type { Projectile, ShotEvent } from '../types';
 
@@ -260,13 +260,85 @@ for (const n of [1, 5, 10, 25, 50]) {
   );
 }
 
-// Growth never narrows a full-width block (5 → 6, 10 → 11 keep 5 lanes) --------
+// Growth never removes a lane; columns unlock gradually and are capped --------------
 {
-  const widths = [5, 6, 7, 10, 11, 13].map((n) => formationLayout(n).columns);
+  const cols = Array.from({ length: SQUAD.maxSize }, (_, i) => formationLayout(i + 1).columns);
+  const monotonic = cols.every((c, i) => i === 0 || c >= cols[i - 1]);
   check(
-    'Formation: growth keeps the lane count once at full width',
-    widths.every((c) => c === SQUAD.formationMaxColumns),
-    `columns for 5/6/7/10/11/13 soldiers = ${widths.join('/')}`,
+    'Formation: growth never narrows the block, columns capped',
+    monotonic && Math.max(...cols) === SQUAD.formationMaxColumns && cols[4] === 3 && cols[19] === 5,
+    `columns 1..50 = ${cols.filter((_, i) => [0, 1, 2, 3, 4, 5, 8, 9, 18, 19, 24, 49].includes(i)).join('/')} (at 1/2/3/4/5/6/9/10/19/20/25/50)`,
+  );
+}
+
+// Compact small-squad shapes from the brief -------------------------------------
+{
+  const shape = (n: number) => {
+    const rows = new Map<number, number>();
+    for (const s of formationSlots(n)) rows.set(s.y, (rows.get(s.y) ?? 0) + 1);
+    return [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, c]) => c).join('+');
+  };
+  const got = [1, 2, 3, 4, 5, 6, 9, 20].map(shape);
+  const want = ['1', '2', '1+2', '2+2', '3+2', '3+3', '3+3+3', '5+5+5+5'];
+  check('Formation: small squads are compact (1, 2, wedge, 2×2, 3+2, 3×2, 3×3, 5×4)', got.join(' ') === want.join(' '), `front→back rows: ${got.join('  ')}`);
+}
+
+// Test A (compact) — 5 soldiers noticeably tighter than one full-width row --------
+{
+  const layout = formationLayout(5);
+  const g = makeGame(5);
+  run(g, 2);
+  const xs = g.soldiers.map((s) => s.pos.x);
+  const width = Math.max(...xs) - Math.min(...xs);
+  check(
+    'Test A (compact): 5 soldiers form a two-row block well inside the road',
+    layout.rows === 2 && width < 0.5 && Math.max(...xs.map(Math.abs)) < SQUAD.roadHalfWidth - SQUAD.formationRoadMargin,
+    `${layout.columns} cols × ${layout.rows} rows, width ${width.toFixed(2)} (was 1.00), outermost |x| ${Math.max(...xs.map(Math.abs)).toFixed(2)}`,
+  );
+}
+
+// Tests B/C — full drag left/right keeps every soldier on the bridge --------------
+for (const [label, dir] of [
+  ['B (left edge)', -1],
+  ['C (right edge)', 1],
+] as const) {
+  const g = makeGame(5);
+  g.setInputX(dir * 5); // far beyond the clamp
+  run(g, 2);
+  const outer = Math.max(...g.soldiers.map((s) => Math.abs(s.pos.x)));
+  const safe = SQUAD.roadHalfWidth - SQUAD.formationRoadMargin;
+  const straight = run(g, 1).every((s) => s.direction.x === ROAD_FORWARD.x && s.direction.y === ROAD_FORWARD.y);
+  check(`Test ${label}: outermost soldier stays inside the road, fire still straight`, outer <= safe + 0.02 && straight, `outermost |x| ${outer.toFixed(2)} ≤ ${safe.toFixed(2)}, anchor ${g.anchorX.toFixed(2)}`);
+}
+
+// Tests D/E — 20 and 50 soldiers: rows, capped width, meaningful drag --------------
+for (const n of [20, 50]) {
+  const layout = formationLayout(n);
+  const g = makeGame(n);
+  g.setInputX(1);
+  run(g, 2);
+  const outer = Math.max(...g.soldiers.map((s) => Math.abs(s.pos.x)));
+  const shooters = distinct(run(g, 2).map((s) => s.soldierId));
+  check(
+    `Test ${n === 20 ? 'D' : 'E'}: ${n} soldiers add rows, width capped, drag meaningful, ${n} shooters`,
+    layout.rows >= 4 && layout.halfWidth * 2 <= SQUAD.formationMaxWidth + 1e-9 && anchorLimitFor(n) >= 0.4 && outer <= SQUAD.roadHalfWidth - SQUAD.formationRoadMargin + 0.02 && shooters === n,
+    `${layout.columns}×${layout.rows}, width ${(layout.halfWidth * 2).toFixed(2)}, safe ±${anchorLimitFor(n).toFixed(2)}, outermost |x| ${outer.toFixed(2)}, shooters ${shooters}`,
+  );
+}
+
+// Perspective: world-straight lanes converge on screen, without steering ---------
+{
+  const g = makeGame(5);
+  g.setInputX(0.4);
+  run(g, 3);
+  const p = g.projectiles.find((q) => q.active && q.originX > 0.4)!;
+  const cam = g.cam;
+  const sx0 = (p.originX - 0) * cam.halfWidthBase * (cam.focal / (p.originY + cam.focal));
+  const sx1 = p.x * cam.halfWidthBase * (cam.focal / (p.y + cam.focal));
+  check(
+    'Perspective: projectile keeps world x while its screen x moves toward the vanishing point',
+    Math.abs(p.x - p.originX) < 1e-9 && p.y > p.originY + 0.5 && sx1 < sx0 && p.vx === 0,
+    `world x ${p.originX.toFixed(3)} → ${p.x.toFixed(3)}; screen offset ${sx0.toFixed(1)}px → ${sx1.toFixed(1)}px after ${(p.y - p.originY).toFixed(2)} units`,
   );
 }
 

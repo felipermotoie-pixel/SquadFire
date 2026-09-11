@@ -21,8 +21,11 @@
 3. Projectile: `x/y = muzzle`, `vx/vy = dir × projectileSpeed`, constant flight height `h`, `originX/originY` kept for the debug path.
 4. `ShotEvent { soldierId, weaponId, origin, originHeight, direction, timestamp }` → recoil, muzzle flash (oriented along the projected forward direction), stats, `onShot` listeners (audio aggregator, tests).
 
+## Coordinate system and perspective
+Projectiles live in **world space** (`x` in road half-widths, `y` forward along the road, `h` height) and are integrated with a constant world velocity `ROAD_FORWARD × projectileSpeed`. They are never moved in screen space. The renderer projects head and tail through `game/camera.ts` (`project()`: a pinhole model, `scale = focal / (y + focal)`), which is why lanes that are parallel in the world converge toward the vanishing point on screen — left-hand soldiers appear to fire slightly right, right-hand soldiers slightly left, centre soldiers straight up. This convergence is geometry only; a projectile's world `x` never changes (asserted by the "Perspective" sim check).
+
 ## Fire lanes and formation
-Columns of the formation are parallel to the road, so a squad of N soldiers produces `min(N, formationMaxColumns)` lanes, `formationHorizontalSpacing` apart. Beyond the width cap extra soldiers add rows (more bullets per lane, same lane count), which keeps positioning meaningful at 50 soldiers. See `GAME_DESIGN.md → Squad`.
+Columns of the formation are parallel to the road, so a squad produces `formationColumns(N)` lanes (1 → 2 → 3 → 4 → 5 as the squad passes 2/5/10/20 soldiers), `formationHorizontalSpacing` (0.21) apart. The block is deliberately compact: a 5-soldier squad covers 0.42 of the road, a 50-soldier block 0.84, so the player must position the fire area instead of getting free road coverage. Projectile hitboxes were **not** widened to compensate. See `GAME_DESIGN.md → Squad`.
 
 ## Boss and enemies
 - The boss is never aimed at. It is hit only when a lane crosses its hitbox. It performs a slow bounded patrol (`BOSS.patrolSpeed/patrolRange/patrolDwell*`) that ignores the squad position, and still telegraphs slams.

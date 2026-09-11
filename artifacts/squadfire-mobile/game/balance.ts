@@ -45,18 +45,31 @@ export const SQUAD = {
   anchorFollow: 14,
   /** Absolute lateral clamp for the squad anchor (small squads). */
   anchorLimit: 0.72,
-  /** Half-width of the drivable road; the whole formation must stay inside it. */
-  roadHalfWidth: 0.95,
-  /** Column pitch along ROAD_RIGHT (world units) = fire-lane spacing. */
-  formationHorizontalSpacing: 0.25,
+  /**
+   * Half-width of the drivable road in world units. World x is expressed in road
+   * half-widths, so the barriers sit at ±1 at *every* depth — perspective narrowing is
+   * purely a projection effect (see game/camera.ts). `roadHalfWidthAt(y)` in
+   * formation.ts is the single place that answers "how wide is the road here".
+   */
+  roadHalfWidth: 1.0,
+  /** Safety margin kept between the outermost soldier's centre and the barrier. */
+  formationRoadMargin: 0.14,
+  /** Column pitch along ROAD_RIGHT (world units) = fire-lane spacing. Soldier sprite is ~0.18 wide. */
+  formationHorizontalSpacing: 0.21,
   /** Row pitch along ROAD_FORWARD for small squads (world units). */
-  formationLongitudinalSpacing: 0.17,
+  formationLongitudinalSpacing: 0.16,
   /** Row pitch floor used when a deep block is compressed. */
   formationMinLongitudinalSpacing: 0.1,
   /** Outer lateral extent the block may never exceed. */
-  formationMaxWidth: 1.0,
+  formationMaxWidth: 0.9,
   /** Hard cap on columns; extra soldiers add rows behind instead of width. */
   formationMaxColumns: 5,
+  /**
+   * Squad sizes at which one more column is unlocked (2 → 2 cols, 5 → 3, 10 → 4, 20 → 5).
+   * Rows are added *before* width so small squads stay compact: 3 = wedge, 4 = 2×2,
+   * 5 = 3+2, 9 = 3×3, 20 = 5×4, 50 = 5×10.
+   */
+  formationColumnThresholds: [2, 5, 10, 20],
   /** Total front-to-back depth budget before rows are compressed. */
   formationMaxDepth: 0.95,
   /** Rear rows may not sit further behind the squad line than this. */

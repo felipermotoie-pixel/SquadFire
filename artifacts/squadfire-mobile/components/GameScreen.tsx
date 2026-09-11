@@ -442,6 +442,7 @@ function DevPanel({
         <Btn label="Stress 50/300" onPress={stress} accent />
       </View>
       <View style={styles.devRow}>
+        <Btn label="20" onPress={() => setSquad(20)} />
         <Btn label="50" onPress={() => setSquad(50)} />
         <Btn label="Off-axis wall" onPress={offAxis} />
         <Btn label="Lane crosser" onPress={crosser} />

@@ -10,13 +10,13 @@ Command a growing squad of armored troopers pushing along a sunlit coastal cause
 4. Boss defeated → `CAUSEWAY SECURED` (victory). All soldiers lost → `SQUAD LOST` (defeat).
 
 ## Controls
-- Horizontal drag anywhere: moves the squad anchor. **This is the aiming control** — soldiers only ever fire straight ahead, so moving the squad moves the fire lanes. The anchor clamp shrinks as the formation gets wider (`roadHalfWidth − formationHalfWidth`, at most ±0.72) so the whole block stays on the road.
+- Horizontal drag anywhere: moves the squad anchor. **This is the aiming control** — soldiers only ever fire straight ahead, so moving the squad moves the fire lanes. The clamp considers the whole block: `anchorLimit = roadHalfWidth − formationHalfWidth − formationRoadMargin` (≤ ±0.72), so the outermost soldier never leaves the bridge.
 - Pause button (top right). Long-press the WAVE pill opens the developer panel in dev builds only.
 
 ## Squad
 - Starts with 5 soldiers, capped at 50.
 - Every soldier faces the vanishing point (`ROAD_FORWARD`). Body heading is never derived from drag, targets, or slots.
-- Formation (`game/formation.ts`): a straight, symmetric block. Rows perpendicular to the road, columns parallel to it. `formationHorizontalSpacing` 0.25, `formationLongitudinalSpacing` 0.17, `formationMaxWidth` 1.0 / `formationMaxColumns` 5. Width fills first (7 soldiers = 5 + 2, rear row centered), then rows are added behind — growth never narrows the block; deep blocks compress row pitch (min 0.10) and creep forward at most 0.3 so the rear stays on screen. 50 soldiers = 5 × 10.
+- Formation (`game/formation.ts`): a compact, straight, symmetric block. Rows perpendicular to the road, columns parallel. `formationHorizontalSpacing` 0.21 (soldier sprite ≈ 0.18 wide), `formationLongitudinalSpacing` 0.16. Columns unlock at 2/5/10/20 soldiers (`formationColumnThresholds`) and cap at 5 (`formationMaxWidth` 0.9): 1 · 2 · wedge(1+2) · 2×2 · 3+2 · 3×2 · 3×3 · 4+4+2 · 5×4 · 5×10. Growth never removes a column; a lone remainder leads as point man, a wider partial row trails centred. Deep blocks compress row pitch (min 0.10) and creep forward ≤ 0.3 so the rear stays on screen.
 - Each soldier is an independent shooter with a fixed lane (see `FIRING_SYSTEM.md`).
 - Losing soldiers: enemy contact at the squad line removes one; a boss slam that lands on the anchor lane removes one.
 
