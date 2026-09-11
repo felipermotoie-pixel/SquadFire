@@ -135,6 +135,8 @@ export class SceneRenderer {
   private glitterShader: SkShader | null = null;
   private roadFadeShader: SkShader | null = null;
   private mastPath = Skia.Path.Make();
+  /** Pooled mast-cap records (no per-frame allocation). */
+  private mastCaps: { x: number; y: number; r: number; a: number }[] = [];
 
   private gateShaders = new Map<string, SkShader>();
   private cachedCamKey = '';
@@ -228,10 +230,11 @@ export class SceneRenderer {
     this.skyShader = this.glitterShader = this.roadFadeShader = null;
     for (const o of [this.unitGlow, this.softGlow, this.threatMarker, this.roadGrain, this.waterNoise, this.glitterNoise]) o.dispose();
     for (const f of [this.whiteFlash, this.bossFlash, this.orangeFlash, this.eliteTint, this.runnerTint, this.enrageTint, this.spawnTint, this.lostTint]) f.dispose();
-    for (const pt of [this.paint, this.stroke, this.glowPaint, this.shadowPaint, this.spritePaint, this.flashPaint, this.hazePaint]) pt.dispose();
-    this.roadPath.dispose();
-    this.tmpPath.dispose();
-    this.mastPath.dispose();
+    for (const pt of [
+      this.paint, this.stroke, this.glowPaint, this.shadowPaint, this.spritePaint, this.flashPaint, this.hazePaint,
+      this.textPaint, this.textShadowPaint, this.tracerCore, this.tracerGlow, this.tracerCoreFar, this.tracerGlowFar,
+    ]) pt.dispose();
+    for (const path of [this.roadPath, this.tmpPath, this.mastPath, this.shadowPath, this.tracerPathNear, this.tracerPathFar, this.sparkPath]) path.dispose();
   }
 
   setAssets(assets: SceneAssets): void {
@@ -640,7 +643,8 @@ export class SceneRenderer {
     const mastH = 1.15;
     const capR = 0.045;
     path.reset();
-    const caps: { x: number; y: number; r: number; a: number }[] = [];
+    const caps = this.mastCaps;
+    let n = 0;
     for (let k = Math.floor(ROAD_FAR / MAST_PITCH); k >= 0; k--) {
       const y = k * MAST_PITCH + (MAST_PITCH - this.scroll * (MAST_PITCH / 0.75)) % MAST_PITCH - 0.6;
       if (y < -1.2 || y > ROAD_FAR) continue;
@@ -651,7 +655,12 @@ export class SceneRenderer {
         const base = project(cam, side * 1.12, y);
         const top = base.y - mastH * u;
         path.addRect(Skia.XYWHRect(base.x - w / 2, top, w, mastH * u));
-        caps.push({ x: base.x, y: top, r: Math.max(1.2, capR * u), a: Math.min(1, u / 60) });
+        const c = caps[n] ?? (caps[n] = { x: 0, y: 0, r: 0, a: 0 });
+        c.x = base.x;
+        c.y = top;
+        c.r = Math.max(1.2, capR * u);
+        c.a = Math.min(1, u / 60);
+        n++;
       }
     }
     p.setColor(Skia.Color(PALETTE.barrierEdge));
@@ -659,7 +668,8 @@ export class SceneRenderer {
     canvas.drawPath(path, p);
     const g = this.glowPaint;
     g.setShader(this.softGlow);
-    for (const c of caps) {
+    for (let i = 0; i < n; i++) {
+      const c = caps[i];
       g.setAlphaf(0.55 * (0.4 + 0.6 * c.a));
       canvas.save();
       canvas.translate(c.x, c.y);
@@ -671,7 +681,7 @@ export class SceneRenderer {
     g.setAlphaf(1);
     p.setColor(Skia.Color('#fff4d6'));
     p.setAlphaf(1);
-    for (const c of caps) canvas.drawCircle(c.x, c.y, c.r, p);
+    for (let i = 0; i < n; i++) canvas.drawCircle(caps[i].x, caps[i].y, caps[i].r, p);
   }
 
   private drawHaze(canvas: SkCanvas, cam: CameraLayout): void {
@@ -691,7 +701,8 @@ export class SceneRenderer {
       const vis = e.kind === 'elite' ? ENEMY_ELITE_VISUAL : ENEMY_GRUNT_VISUAL;
       const pr = project(cam, e.pos.x, e.pos.y);
       const u = unitPx(cam, e.pos.y);
-      const w = vis.height * vis.aspect * u * vis.shadowScale * e.sizeVariation * 1.4 * (1 - e.death * 0.8);
+      const spawnIn = e.age < 0.5 ? e.age / 0.5 : 1;
+      const w = vis.height * vis.aspect * u * vis.shadowScale * e.sizeVariation * 1.4 * (1 - e.death * 0.8) * spawnIn;
       const h = w * 0.32;
       path.addOval(Skia.XYWHRect(pr.x - w / 2, pr.y - h / 2, w, h));
     }
@@ -888,7 +899,7 @@ export class SceneRenderer {
     }
     if (e.death > 0) {
       const d = e.death;
-      alpha = 1 - d * d;
+      alpha *= 1 - d * d;
       rot += d * 1.4 * e.lastHitDir * mirror;
       dropY = d * frame.height * 0.4;
       sy *= 1 - d * 0.5;
@@ -897,7 +908,7 @@ export class SceneRenderer {
     // Long-range readability: below ~45% scale a sprite is a 20 px silhouette, so a
     // warm ground marker (strongest at the spawn line, gone by mid-road) keeps every
     // enemy readable as a threat without faking its size.
-    if (e.death === 0 && frame.scale < 0.45) {
+    if (e.death === 0 && frame.scale < 0.45 && alpha > 0.05) {
       const k = Math.min(1, (0.45 - frame.scale) / 0.25);
       const g = this.glowPaint;
       g.setShader(this.threatMarker);

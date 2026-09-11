@@ -24,6 +24,7 @@ Boss (2600 HP base; stage 5 = 2340, stage 10 major = 4043, +28 % per boss cycle)
 - Enemy mix: grunts only in 1–2, runners (18 HP, 0.66 u/s) from 3, elites from 4 (6 % → 32 % share).
 - Boss every 5 stages after the stage's sequence + 1.3 s warning. Autopilot sims: stage 1 clears in ~11 s, stage 2 ~13 s, stage 5 with a 12-soldier squad ~20 s including the boss.
 - Gates: first at 9 s, then every 12 s, paused while a boss is alive → ~1 pair per early stage.
+- Approach distance (v0.3.5): `ROAD_LENGTH` grew 6 → 8 for long-range visibility, and enemy/gate/boss spawns follow it. Speeds were **not** retuned, so time-to-contact is longer than in v0.3.4: grunt ≈ 19 s (was 14), runner ≈ 12 s (was 9), elite ≈ 23 s (was 17); gates and the boss arrive ≈ 3.6 s later. Base speeds/HP were not changed so the stage curve numbers above still hold in relative terms; if the extra firing time makes early stages too easy, the honest knob is `ENEMIES.<kind>.speed` (×1.33 restores v0.3.4 contact times), not the spawn line.
 
 ## Hit efficiency
 There is no targeting and no overkill bookkeeping: `hitEfficiency` is entirely the player's positioning. A grunt (hit radius 0.2) standing in the block is crossed by one or two lanes (0.21 apart); a 50-soldier block puts 10 bullets/s into each of its 5 lanes. Boss hit radius 0.62 spans the whole 0.84-wide block when centred on it.
