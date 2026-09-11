@@ -25,6 +25,21 @@ export const ROAD_LENGTH = 8;
 export const ROAD_FORWARD: Readonly<Vec2> = Object.freeze({ x: 0, y: 1 });
 export const ROAD_RIGHT: Readonly<Vec2> = Object.freeze({ x: 1, y: 0 });
 
+/**
+ * Forward depth of a world position = its projection on ROAD_FORWARD. Because the
+ * basis is axis-aligned this equals `v.y`, and `pos.y` / `Projectile.y` are the
+ * canonical forward-depth coordinates everywhere (see types.ts). Range, combat-depth
+ * and formation-depth rules go through these helpers so the basis stays the single
+ * source of truth.
+ */
+export function forwardDepth(v: Readonly<Vec2>): number {
+  return v.x * ROAD_FORWARD.x + v.y * ROAD_FORWARD.y;
+}
+/** Lateral offset of a world position = its projection on ROAD_RIGHT (= `v.x`). */
+export function lateral(v: Readonly<Vec2>): number {
+  return v.x * ROAD_RIGHT.x + v.y * ROAD_RIGHT.y;
+}
+
 export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
   rifle: {
     id: 'rifle',
@@ -57,28 +72,45 @@ export const SQUAD = {
    * formation.ts is the single place that answers "how wide is the road here".
    */
   roadHalfWidth: 1.0,
-  /** Safety margin kept between the outermost soldier's centre and the barrier. */
-  formationRoadMargin: 0.14,
-  /** Column pitch along ROAD_RIGHT (world units) = fire-lane spacing. Soldier sprite is ~0.18 wide. */
-  formationHorizontalSpacing: 0.21,
+  /**
+   * True gap kept between the outermost soldier's *rendered edge* (not its centre) and
+   * the barrier. The footprint half-width used by the clamp is
+   * centreSpan/2 + soldierHalfWidth (see formation.ts), so this margin is only air.
+   */
+  formationRoadMargin: 0.06,
+  /**
+   * Column pitch along ROAD_RIGHT (world units) = fire-lane spacing. The soldier
+   * sprite is 0.46 × 0.384 ≈ 0.177 wide, so 0.15 gives ~15 % shoulder overlap —
+   * intentionally dense (v0.3.6 ultra-compact block), muzzles stay distinct.
+   */
+  formationHorizontalSpacing: 0.15,
   /** Row pitch along ROAD_FORWARD for small squads (world units). */
-  formationLongitudinalSpacing: 0.16,
+  formationLongitudinalSpacing: 0.12,
   /** Row pitch floor used when a deep block is compressed. */
-  formationMinLongitudinalSpacing: 0.1,
-  /** Outer lateral extent the block may never exceed. */
-  formationMaxWidth: 0.9,
-  /** Hard cap on columns; extra soldiers add rows behind instead of width. */
+  formationMinLongitudinalSpacing: 0.08,
+  /**
+   * Outer *centre-to-centre* span the block may never exceed (outermost soldier
+   * centres, not rendered edges). 0.6 / 0.15 = 4 gaps → exactly 5 columns; the column
+   * cap in formation.ts adds an epsilon so this never depends on float division.
+   */
+  formationMaxWidth: 0.6,
+  /**
+   * Hard cap on columns; extra soldiers add rows behind instead of width. Fixed at 5
+   * for v0.3.6: 50 soldiers = 5 × 10 rows → 9 gaps × 0.08 = 0.72 = formationMaxDepth.
+   * Four columns (13 rows, 0.96 deep) would not fit the vertical budget.
+   */
   formationMaxColumns: 5,
   /**
-   * Squad sizes at which one more column is unlocked (2 → 2 cols, 5 → 3, 10 → 4, 20 → 5).
-   * Rows are added *before* width so small squads stay compact: 3 = wedge, 4 = 2×2,
-   * 5 = 3+2, 9 = 3×3, 20 = 5×4, 50 = 5×10.
+   * Squad sizes at which one more column is unlocked (cumulative: columns = 1 + number
+   * of thresholds reached, capped). 2 → 2 cols, 5 → 3, 12 → 4, 24 → 5. Rows are added
+   * *before* width so the block grows backward: 3 = wedge, 4 = 2×2, 5 = 3+2, 6 = 3×2,
+   * 9 = 3×3, 12 = 4×3, 20 = 4×5, 24 = 5×4+4, 50 = 5×10.
    */
-  formationColumnThresholds: [2, 5, 10, 20],
+  formationColumnThresholds: [2, 5, 12, 24],
   /** Total front-to-back depth budget before rows are compressed. */
-  formationMaxDepth: 0.95,
+  formationMaxDepth: 0.72,
   /** Rear rows may not sit further behind the squad line than this. */
-  formationMaxRearDepth: 0.75,
+  formationMaxRearDepth: 0.6,
   /** Front row may creep this far ahead of the squad line for deep blocks. */
   formationMaxFrontAdvance: 0.3,
   /** Formation-slot capacity of a full row (derived: equals formationMaxColumns). */
@@ -104,6 +136,12 @@ export const ENEMIES = {
   /** Never keep more than this many enemies alive. */
   maxAlive: 300,
   spawnY: ROAD_LENGTH - 0.2,
+  /**
+   * Hard ceiling on any enemy's forward depth at spawn (`spawnEnemy` clamps to it):
+   * covers the timeline jitter (+0.15) and the second row of an escort group
+   * (+0.28 + 0.12). COMBAT_DEPTH is derived from it — nothing can ever be hit deeper.
+   */
+  maxSpawnDepth: ROAD_LENGTH - 0.2 + 0.4,
   spawnDepthSpread: 1.1,
   /** Forward distance at which an enemy reaches the squad line. */
   contactY: 0.08,
@@ -144,21 +182,46 @@ export const GATES = {
   height: 0.9,
 };
 
+/**
+ * Deepest forward depth at which anything can be hit: the farthest spawn line plus the
+ * largest depth tolerance. Bullets beyond it are in pure flight (no collision queries).
+ */
+export const COMBAT_DEPTH =
+  Math.max(ENEMIES.maxSpawnDepth, BOSS.spawnY, GATES.spawnY) +
+  Math.max(ENEMIES.grunt.depthTolerance, ENEMIES.runner.depthTolerance, ENEMIES.elite.depthTolerance, BOSS.depthTolerance);
+
 export const PROJECTILES = {
+  /**
+   * Floor for the projectile pool. The engine grows the pool at construction (and on
+   * camera change) to `requiredProjectilePool(cam)`, which is derived from the
+   * camera's far visible depth, so a live bullet is never recycled.
+   */
   poolSize: 640,
-  /** Seconds a missed bullet stays alive before it is recycled (it usually leaves the road first). */
-  lifetime: 1.6,
+  /** Safety factor applied to the theoretical peak of simultaneously live bullets. */
+  poolSafetyFactor: 1.3,
+  /**
+   * Lifetime = maxTravel / speed × this margin. The travel budget is the real limit;
+   * the lifetime is only a backstop and must never cut a bullet short.
+   */
+  lifetimeMargin: 1.15,
   /** Lateral limit past which a projectile is off the road and recycled. */
   sideExit: 1.6,
-  /** Forward margin past ROAD_LENGTH before a projectile is recycled. */
-  farExit: 0.6,
+  /**
+   * End of the readable track: a missed bullet flies until the road's projected width
+   * falls below this fraction of the screen width (≈ 40 pt on a 402-pt phone — fire
+   * lanes 0.15 units apart are then ~3 pt apart and the track no longer reads). The
+   * camera turns it into `farVisibleDepth` (game/camera.ts, ≈ 23.1 units for the
+   * v0.3.5 camera); each bullet's budget is `farVisibleDepth − forwardDepth(spawn)`
+   * so every row ends at the same distant boundary.
+   */
+  minReadableRoadWidthFraction: 0.1,
 };
 
 export const VFX = {
   poolSize: 320,
   popupPoolSize: 40,
   muzzleLifetime: 0.07,
-  impactLifetime: 0.22,
+  impactLifetime: 0.14,
   deathLifetime: 0.5,
   bossDeathLifetime: 1.6,
 };

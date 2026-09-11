@@ -10,7 +10,9 @@
  *   when a projectile physically crosses a hitbox. The player aims by moving the squad.
  */
 import {
-  BOSS, ENEMIES,
+  BOSS,
+  COMBAT_DEPTH,
+  ENEMIES,
   GATES,
   MODIFIER_CAPS,
   PROJECTILES,
@@ -19,10 +21,12 @@ import {
   SIM,
   SQUAD,
   VFX,
-  WEAPONS, } from './balance';
+  WEAPONS,
+  forwardDepth,
+} from './balance';
 import { createCamera, project, type CameraLayout } from './camera';
 import { STAGES, bossHpFor, stageConfig, stageEnemyCount, type StageConfig, type StageState } from './stages';
-import { anchorLimitFor, formationSlots } from './formation';
+import { anchorLimitFor, formationLayout, formationSlots } from './formation';
 import { emptyFrame, spriteFrame } from './sprite-geometry';
 import type {
   Boss,
@@ -65,6 +69,27 @@ const BUCKET_COLS = 6;
 const BUCKET_X_MIN = -1.5;
 const BUCKET_X_SIZE = 3 / BUCKET_COLS;
 const BUCKET_COUNT = BUCKET_ROWS * BUCKET_COLS;
+
+/**
+ * Projectile pool the camera needs so no live bullet is ever recycled. Discrete
+ * shots, not a rate × time approximation: the rearmost muzzle has the longest flight
+ * (farVisibleDepth − rear muzzle depth) at the fastest allowed cadence.
+ */
+export function projectilePoolRequirement(cam: CameraLayout): {
+  maxFlightTime: number;
+  maxShotsInFlightPerSoldier: number;
+  theoreticalMaxActive: number;
+  requiredPool: number;
+} {
+  const weapon = WEAPONS.rifle;
+  const rearMuzzleDepth = formationLayout(SQUAD.maxSize).rearY + PLAYER_SOLDIER_VISUAL.muzzleForwardOffset;
+  const maxFlightTime = (cam.farVisibleDepth - rearMuzzleDepth) / weapon.projectileSpeed;
+  const maxEffectiveFireRate = weapon.fireRate * MODIFIER_CAPS.fireRateMax;
+  const maxShotsInFlightPerSoldier = Math.ceil(maxEffectiveFireRate * maxFlightTime) + 1;
+  const theoreticalMaxActive = SQUAD.maxSize * maxShotsInFlightPerSoldier;
+  const requiredPool = Math.ceil(theoreticalMaxActive * PROJECTILES.poolSafetyFactor);
+  return { maxFlightTime, maxShotsInFlightPerSoldier, theoreticalMaxActive, requiredPool };
+}
 
 export interface GameOptions {
   seed?: number;
@@ -112,9 +137,11 @@ export class Game {
     kills: 0,
     elapsed: 0,
     activeProjectiles: 0,
+    peakActiveProjectiles: 0,
+    projectilePoolExhausted: 0,
     activeEnemies: 0,
     activeSoldiers: 0,
-    poolProjectiles: PROJECTILES.poolSize,
+    poolProjectiles: 0,
     poolVfx: VFX.poolSize,
     simMs: 0,
     fps: 0,
@@ -147,12 +174,13 @@ export class Game {
   private buckets: Enemy[][] = [];
   private frame = emptyFrame();
   private scratchProjected = { x: 0, y: 0, scale: 1 };
+  private poolWarned = false;
 
   constructor(opts: GameOptions = {}) {
     this.rng = mulberry32(opts.seed ?? 1337);
     this.cam = createCamera(opts.width ?? 402, opts.height ?? 874);
     for (let i = 0; i < BUCKET_COUNT; i++) this.buckets.push([]);
-    for (let i = 0; i < PROJECTILES.poolSize; i++) this.projectiles.push(createProjectile());
+    this.ensureProjectilePool();
     for (let i = 0; i < VFX.poolSize; i++) this.vfx.push(createVfx());
     for (let i = 0; i < VFX.popupPoolSize; i++) this.popups.push(createPopup());
     this.addSoldiers(opts.initialSquad ?? SQUAD.initialSize, false);
@@ -172,6 +200,17 @@ export class Game {
 
   setCamera(width: number, height: number): void {
     this.cam = createCamera(width, height);
+    this.ensureProjectilePool();
+  }
+
+  /**
+   * Grows the projectile pool to what the current camera requires (never shrinks, so
+   * bullets in flight are untouched). PROJECTILES.poolSize is only the floor.
+   */
+  private ensureProjectilePool(): void {
+    const need = Math.max(PROJECTILES.poolSize, projectilePoolRequirement(this.cam).requiredPool);
+    while (this.projectiles.length < need) this.projectiles.push(createProjectile());
+    this.stats.poolProjectiles = this.projectiles.length;
   }
 
   onShot(listener: ShotListener): () => void {
@@ -377,11 +416,15 @@ export class Game {
   spawnEnemy(kind: EnemyKind, x: number, y: number): Enemy {
     const def = ENEMIES[kind];
     const hp = Math.max(1, Math.round(def.hp * this.stageConfig.enemyHpMultiplier));
+    // Nothing may ever start deeper than maxSpawnDepth: COMBAT_DEPTH relies on it.
+    y = Math.min(y, ENEMIES.maxSpawnDepth);
     const enemy: Enemy = {
       id: this.nextEnemyId++,
       alive: true,
       kind,
       pos: { x, y },
+      prevX: x,
+      prevY: y,
       hp,
       maxHp: hp,
       speed: def.speed * this.stageConfig.enemySpeedMultiplier * (0.9 + this.rng() * 0.2),
@@ -406,6 +449,8 @@ export class Game {
     this.boss.alive = true;
     this.boss.pos.x = 0;
     this.boss.pos.y = BOSS.spawnY;
+    this.boss.prevX = 0;
+    this.boss.prevY = BOSS.spawnY;
     this.boss.hp = hp;
     this.boss.maxHp = hp;
     this.boss.attackIntervalScale = cfg.attackIntervalMultiplier;
@@ -547,11 +592,13 @@ export class Game {
 
     if (this.phase === 'playing' && !this.scripted) this.updateDirector(dt);
 
+    // Targets move first so that, when projectiles are swept, enemy/boss
+    // prev→pos and projectile prev→pos describe the same substep interval.
+    this.updateEnemies(dt);
+    this.updateBoss(dt);
     this.rebuildBuckets();
     this.updateSoldiers(dt);
     this.updateProjectiles(dt);
-    this.updateEnemies(dt);
-    this.updateBoss(dt);
     this.updateGates(dt);
     this.updateVfx(dt);
 
@@ -726,15 +773,20 @@ export class Game {
     p.weaponId = s.weaponId;
     p.x = originX;
     p.y = originY;
+    p.prevX = originX;
+    p.prevY = originY;
     p.originX = originX;
     p.originY = originY;
     p.vx = dirX * weapon.projectileSpeed;
     p.vy = dirY * weapon.projectileSpeed;
     p.h = originH;
     p.traveled = 0;
+    // Travel budget to the camera's far visible depth from THIS muzzle, so front and
+    // rear rows terminate at the same distant boundary. Lifetime is only a backstop.
+    p.maxTravel = Math.max(0.5, this.cam.farVisibleDepth - forwardDepth(m));
     p.damage = weapon.damage * this.mods.damage;
     p.spawnTime = this.time;
-    p.lifetime = PROJECTILES.lifetime;
+    p.lifetime = (p.maxTravel / weapon.projectileSpeed) * PROJECTILES.lifetimeMargin;
 
     s.recoil = weapon.recoil;
     s.shotsFired++;
@@ -768,76 +820,98 @@ export class Game {
     for (let i = 0; i < pool.length; i++) {
       if (!pool[i].active) return pool[i];
     }
-    // Pool exhausted: recycle the oldest projectile (keeps the per-soldier rule intact).
-    let oldest = pool[0];
-    for (let i = 1; i < pool.length; i++) if (pool[i].spawnTime < oldest.spawnTime) oldest = pool[i];
-    return oldest;
+    // Never recycle a live bullet. The pool is sized for the camera's maximum flight
+    // time at the capped cadence (ensureProjectilePool), so this is a real bug signal.
+    this.stats.projectilePoolExhausted++;
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && !this.poolWarned) {
+      this.poolWarned = true;
+      console.warn(`[squadfire] projectile pool exhausted (${pool.length}); shot dropped`);
+    }
+    return null;
   }
 
   private updateProjectiles(dt: number): void {
     const pool = this.projectiles;
     const boss = this.boss;
     const bossTargetable = boss.active && boss.alive && boss.death === 0;
+    let active = 0;
     for (let i = 0; i < pool.length; i++) {
       const p = pool[i];
       if (!p.active) continue;
       const stepLen = Math.hypot(p.vx, p.vy) * dt;
+      p.prevX = p.x;
+      p.prevY = p.y;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.traveled += stepLen;
 
-      // Collision: regular enemies via the 3×3 neighbourhood of the 2D grid.
-      const row = bucketRow(p.y);
-      let hit: Enemy | null = null;
-      if (row >= 0) {
-        const col = bucketCol(p.x);
-        const r0 = row > 0 ? row - 1 : 0;
-        const r1 = row < BUCKET_ROWS - 1 ? row + 1 : BUCKET_ROWS - 1;
-        const c0 = col > 0 ? col - 1 : 0;
-        const c1 = col < BUCKET_COLS - 1 ? col + 1 : BUCKET_COLS - 1;
-        outer: for (let r = r0; r <= r1; r++) {
-          for (let c = c0; c <= c1; c++) {
-            const bucket = this.buckets[r * BUCKET_COLS + c];
-            for (let k = 0; k < bucket.length; k++) {
-              const e = bucket[k];
-              if (e.death > 0 || !e.alive) continue;
-              const def = ENEMIES[e.kind];
-              const ddx = e.pos.x - p.x;
-              const ddy = e.pos.y - p.y;
-              if ((ddx < 0 ? -ddx : ddx) <= def.hitRadius * e.sizeVariation && (ddy < 0 ? -ddy : ddy) <= def.depthTolerance) {
-                hit = e;
-                break outer;
+      // Beyond COMBAT_DEPTH nothing can be hit: pure flight, no lookups.
+      if (p.prevY <= COMBAT_DEPTH) {
+        // Collision: swept segment (prev → current) against each candidate's own
+        // motion over its last step, evaluated in the candidate's frame. A bullet can
+        // therefore neither tunnel through a thin depth tolerance nor miss an enemy
+        // that crossed its lane between two steps. Candidates come from the 3×3
+        // neighbourhood of the 2D grid (cell 0.5 ≫ step 0.09 + hitbox).
+        const row = bucketRow(p.y);
+        let hit: Enemy | null = null;
+        if (row >= 0) {
+          const col = bucketCol(p.x);
+          const r0 = row > 0 ? row - 1 : 0;
+          const r1 = row < BUCKET_ROWS - 1 ? row + 1 : BUCKET_ROWS - 1;
+          const c0 = col > 0 ? col - 1 : 0;
+          const c1 = col < BUCKET_COLS - 1 ? col + 1 : BUCKET_COLS - 1;
+          outer: for (let r = r0; r <= r1; r++) {
+            for (let c = c0; c <= c1; c++) {
+              const bucket = this.buckets[r * BUCKET_COLS + c];
+              for (let k = 0; k < bucket.length; k++) {
+                const e = bucket[k];
+                if (e.death > 0 || !e.alive) continue;
+                const def = ENEMIES[e.kind];
+                if (
+                  sweptHit(
+                    p.prevX - e.prevX,
+                    p.prevY - e.prevY,
+                    p.x - e.pos.x,
+                    p.y - e.pos.y,
+                    def.hitRadius * e.sizeVariation,
+                    def.depthTolerance,
+                  )
+                ) {
+                  hit = e;
+                  break outer;
+                }
               }
             }
           }
         }
-      }
-      if (hit) {
-        this.damageEnemy(hit, p);
-        p.active = false;
-        continue;
-      }
+        if (hit) {
+          this.damageEnemy(hit, p);
+          p.active = false;
+          continue;
+        }
 
-      // The boss is never aimed at; it is hit only when its hitbox crosses a lane.
-      if (bossTargetable) {
-        const ddx = boss.pos.x - p.x;
-        const ddy = boss.pos.y - p.y;
-        if ((ddx < 0 ? -ddx : ddx) <= BOSS.hitRadius && (ddy < 0 ? -ddy : ddy) <= BOSS.depthTolerance) {
+        // The boss is never aimed at; it is hit only when its hitbox crosses a lane.
+        if (
+          bossTargetable &&
+          sweptHit(p.prevX - boss.prevX, p.prevY - boss.prevY, p.x - boss.pos.x, p.y - boss.pos.y, BOSS.hitRadius, BOSS.depthTolerance)
+        ) {
           this.damageBoss(p);
           p.active = false;
           continue;
         }
       }
 
-      // Missed bullets keep flying until they time out or leave the road. There is
-      // no "planned distance": nothing about a projectile depends on a target.
+      // Missed bullets fly their full travel budget (to the camera's far visible
+      // depth) or leave the road sideways. The lifetime is a backstop only.
       const expired =
+        p.traveled > p.maxTravel ||
         this.time - p.spawnTime > p.lifetime ||
-        p.y > ROAD_LENGTH + PROJECTILES.farExit ||
         p.x < -PROJECTILES.sideExit ||
         p.x > PROJECTILES.sideExit;
       if (expired) p.active = false;
+      else active++;
     }
+    if (active > this.stats.peakActiveProjectiles) this.stats.peakActiveProjectiles = active;
   }
 
   private damageEnemy(e: Enemy, p: Projectile): void {
@@ -896,6 +970,8 @@ export class Game {
         }
         continue;
       }
+      e.prevX = e.pos.x;
+      e.prevY = e.pos.y;
       if (this.phase !== 'playing') continue;
       e.pos.y -= e.speed * dt;
       // Gentle lateral wander only. Enemies never drift toward the squad: if the
@@ -927,6 +1003,8 @@ export class Game {
       return;
     }
     if (this.phase !== 'playing') return;
+    b.prevX = b.pos.x;
+    b.prevY = b.pos.y;
 
     if (b.pos.y > BOSS.holdY) {
       b.pos.y = Math.max(BOSS.holdY, b.pos.y - BOSS.approachSpeed * dt);
@@ -1113,6 +1191,47 @@ function trimNumber(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+/**
+ * Does the segment a → b (positions relative to a hitbox centre) touch the
+ * axis-aligned box |x| ≤ hx, |y| ≤ hy? Slab test; endpoints inclusive, so a bullet
+ * ending inside the box behaves exactly like the old point test.
+ */
+export function sweptHit(ax: number, ay: number, bx: number, by: number, hx: number, hy: number): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = bx - ax;
+  const dy = by - ay;
+  if (dx > -1e-12 && dx < 1e-12) {
+    if (ax < -hx || ax > hx) return false;
+  } else {
+    let tx0 = (-hx - ax) / dx;
+    let tx1 = (hx - ax) / dx;
+    if (tx0 > tx1) {
+      const tmp = tx0;
+      tx0 = tx1;
+      tx1 = tmp;
+    }
+    if (tx0 > t0) t0 = tx0;
+    if (tx1 < t1) t1 = tx1;
+    if (t0 > t1) return false;
+  }
+  if (dy > -1e-12 && dy < 1e-12) {
+    if (ay < -hy || ay > hy) return false;
+  } else {
+    let ty0 = (-hy - ay) / dy;
+    let ty1 = (hy - ay) / dy;
+    if (ty0 > ty1) {
+      const tmp = ty0;
+      ty0 = ty1;
+      ty1 = tmp;
+    }
+    if (ty0 > t0) t0 = ty0;
+    if (ty1 < t1) t1 = ty1;
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
 function bucketRow(y: number): number {
   if (y < -0.5) return -1;
   const idx = Math.floor((y + 0.5) / BUCKET_SIZE);
@@ -1160,6 +1279,8 @@ function createBoss(): Boss {
     active: false,
     alive: false,
     pos: { x: 0, y: BOSS.spawnY },
+    prevX: 0,
+    prevY: BOSS.spawnY,
     hp: BOSS.hp,
     maxHp: BOSS.hp,
     age: 0,
@@ -1181,12 +1302,15 @@ function createProjectile(): Projectile {
     weaponId: 'rifle',
     x: 0,
     y: 0,
+    prevX: 0,
+    prevY: 0,
     vx: 0,
     vy: 0,
     h: 0,
     originX: 0,
     originY: 0,
     traveled: 0,
+    maxTravel: 1,
     damage: 0,
     spawnTime: 0,
     lifetime: 1,

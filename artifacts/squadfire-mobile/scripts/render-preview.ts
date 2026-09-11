@@ -141,6 +141,37 @@ const scenarios: Scenario[] = [
       }
     },
   },
+  // v0.3.6 compact formation: 5 / 20 / 50 soldiers centred and dragged to the right edge.
+  ...[5, 20, 50].flatMap((n) => [
+    { name: `12-compact-${String(n).padStart(2, '0')}-centre`, seconds: 2.6, setup: (g: Game) => { g.scripted = true; g.setSquadSize(n); } },
+    { name: `12-compact-${String(n).padStart(2, '0')}-edge`, seconds: 2.6, debug: true, setup: (g: Game) => { g.scripted = true; g.setSquadSize(n); g.setInputX(5); } },
+  ]),
+  {
+    // Full-range miss: 50 soldiers at the capped cadence, no enemies — every bullet
+    // flies to farVisibleDepth. Worst case for tracer draw cost and the end-fade look.
+    name: '13-full-range-miss-50',
+    seconds: 4,
+    setup: (g) => {
+      g.scripted = true;
+      g.setSquadSize(50);
+      g.applyEffect({ kind: 'fireRate', multiplier: 2.5 });
+    },
+  },
+  {
+    // Impact sparks: a 10-soldier block firing into a wall of immortal grunts mid-road.
+    name: '14-impact-sparks',
+    seconds: 2.4,
+    setup: (g) => {
+      g.scripted = true;
+      g.setSquadSize(10);
+      for (let i = 0; i < 8; i++) {
+        const e = g.spawnEnemy(i % 4 === 0 ? 'elite' : 'grunt', -0.45 + i * 0.13, 3.2 + (i % 2) * 0.3);
+        e.speed = 0;
+        e.hp = 1e9;
+        e.maxHp = 1e9;
+      }
+    },
+  },
 ];
 
 function main() {

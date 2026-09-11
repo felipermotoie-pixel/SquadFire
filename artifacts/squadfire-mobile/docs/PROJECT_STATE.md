@@ -3,7 +3,17 @@
 Updated: 2026-09-11
 
 ## Version
-`v0.3.5` — Long-range visual upgrade. History: `v0.3.4` stage-based progression, `pre-visual-upgrade` checkpoint, `v0.3.3` review fix (ranks close the frame a soldier is lost), `pre-stage-system` checkpoint, `v0.3.0` straight-fire rework, `v0.3.1` review fixes, `v0.3.2` projectile-perspective audit + compact formation + whole-formation road clamp. Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
+`v0.3.6` — Projectile range, ultra-compact formation, rifle tracer look. History: `v0.3.5` long-range visual upgrade, `pre-v0.3.6` checkpoint, `v0.3.4` stage-based progression, `pre-visual-upgrade` checkpoint, `v0.3.3` review fix (ranks close the frame a soldier is lost), `pre-stage-system` checkpoint, `v0.3.0` straight-fire rework, `v0.3.1` review fixes, `v0.3.2` projectile-perspective audit + compact formation + whole-formation road clamp. Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
+
+## v0.3.6 — what changed
+- **Projectile range:** bullets fly to `camera.farVisibleDepth` (camera-derived, ≈ 23.1 world units = where the road projects narrower than 10 % of the screen width; ~4.8 % of the screen height below the horizon) with a per-shot travel budget so every row terminates at the same boundary; `PROJECTILES.lifetime` / `farExit` removed (lifetime is a 1.15× backstop). Collision lookups stop at `COMBAT_DEPTH` ≈ 8.9 (deepest possible spawn; `spawnEnemy` now clamps to `ENEMIES.maxSpawnDepth`).
+- **Pool:** sized from the camera (`projectilePoolRequirement`: 12 per soldier × 50 × 1.3 = 780), grown in place; exhaustion drops the shot and counts it (`stats.projectilePoolExhausted`, shown in the debug overlay) instead of recycling a live bullet. Measured peak 531.
+- **Collision:** relative swept segment test (`sweptHit`) against unchanged hitboxes; `prevX/prevY` on projectiles, enemies and the boss. Fast crossers hit identically at 30/60/120 Hz.
+- **Formation:** 5 columns × 0.15, rows 0.12, column thresholds 2/5/12/24, 50 = 5 × 10 (0.60 wide, rear −0.60), road margin 0.06 beyond the sprite footprint, clamp evaluated per row. Anchor limits ±0.70 (≤ 10) / ±0.62 (20) / ±0.55 (≥ 25). Autopilot clear times unchanged within 0.3 s.
+- **Tracers:** short amber-white dashes with a faint glow (cores drawn above the haze, glow below), width and tail scale with distance, 12 % end fade; compact metallic impact sparks (0.14 s). Muzzle flash unchanged.
+- **Metro fix (pre-existing since v0.2.0):** iOS/Android bundles failed with "Unable to resolve module fs from canvaskit-wasm" because Expo Router's native route context also bundles `app/index.web.tsx`; `metro.config.js` now resolves Skia's web loader and `canvaskit-wasm` to an empty module on native. All three platform bundles build.
+- Tests: 59 fire checks + 10 stage checks; render harness gained `12-compact-*`, `13-full-range-miss-50`, `14-impact-sparks`.
+- Known: at the clamp extreme the rear outer column of a 50-soldier block can extend ~87 pt past the *screen* edge (the road is 0.56 × screen width per side near the camera; v0.3.5 overflowed ~89 pt). It never leaves the road. A screen-aware clamp would cut 50-soldier drag to ≈ ±0.26, so it was not applied.
 
 ## v0.3.5 — what changed (visual only, no gameplay rules touched)
 - Camera reframed for depth: horizon 17.5 %, squad line 71.5 %, `ROAD_LENGTH` 6 → 8 (enemies/gates/boss spawn at the new far end and walk in; focal follows `ROAD_LENGTH` so near-field sizes, hitboxes and muzzles are unchanged). Not a rules change, but it is a pacing change: enemies walk 33 % farther at unchanged speed (grunt contact ≈ 19 s vs 14 s), gates and the boss arrive ~3.6 s later — see `BALANCE.md` for the retune knob if early stages feel too easy.
@@ -43,7 +53,7 @@ Updated: 2026-09-11
 
 ## Not done / known gaps
 - Coins/score are tracked per run but nothing spends them (shop out of scope). No stage select / continue: every run starts at Stage 1 by design until the menu phase.
-- No device FPS measurement yet (only headless sim cost and CPU raster timings). See `TEST_PLAN.md`.
+- No device FPS measurement yet (only headless sim cost and CPU raster timings). v0.3.6 needs an Expo Go pass: FPS overlay at 5 and 50 soldiers (all-miss), tracer look, formation on the road at both edges. See `TEST_PLAN.md` manual items 7, 9, 10.
 - No audio playback; `ShotAudioAggregator` only batches shot events per frame.
 - Enemies do not shoot; pressure is contact + boss slams only.
 - Lint not configured in this artifact.

@@ -12,9 +12,12 @@
  * formation alignment at 1/5/10/25/50, cadence, the section-44 acceptance test,
  * muzzle alignment, performance and the 500-projectile stress case.
  */
-import { Game } from '../engine';
-import { BOSS, ENEMIES, PROJECTILES, ROAD_FORWARD, ROAD_LENGTH, SQUAD, WEAPONS } from '../balance';
-import { anchorLimitFor, formationLayout, formationSlots } from '../formation';
+import { Game, projectilePoolRequirement, sweptHit } from '../engine';
+import { BOSS, COMBAT_DEPTH, ENEMIES, MODIFIER_CAPS, PROJECTILES, ROAD_FORWARD, ROAD_LENGTH, SIM, SQUAD, WEAPONS } from '../balance';
+import { createCamera, project } from '../camera';
+import { SOLDIER_HALF_WIDTH, anchorLimitFor, formationColumns, formationLayout, formationSlots } from '../formation';
+import { spriteFrame } from '../sprite-geometry';
+import { PLAYER_SOLDIER_VISUAL } from '../visuals';
 import type { Projectile, ShotEvent } from '../types';
 
 interface Result {
@@ -64,6 +67,8 @@ function approx(actual: number, expected: number, tolerance: number): boolean {
 
 const R = WEAPONS.rifle.fireRate;
 const FORWARD_EPS = 1e-9;
+/** Furthest a soldier's centre may sit: barrier − rendered half-width − air margin. */
+const SAFE_CENTRE = SQUAD.roadHalfWidth - SOLDIER_HALF_WIDTH - SQUAD.formationRoadMargin;
 
 // TEST A — static squad: parallel lanes straight up the road -----------------
 {
@@ -101,20 +106,143 @@ const FORWARD_EPS = 1e-9;
   check('B: dragging the squad onto the enemy produces hits', g.stats.hits > 0, `${g.stats.hits} hits after drag (anchor ${g.anchorX.toFixed(2)}, limit ±${g.anchorLimit.toFixed(2)})`);
 }
 
-// Missed bullets live until they leave the road ------------------------------
+// Missed bullets live until the camera's far visible depth ---------------------
 {
   const g = makeGame(1);
   run(g, 0.6);
   const p: Projectile | undefined = g.projectiles.find((x) => x.active);
+  const far = g.cam.farVisibleDepth;
   let lastY = 0;
+  let lastTraveled = 0;
   let steps = 0;
-  while (p && p.active && steps < 2000) {
+  const spawnTime = p?.spawnTime ?? 0;
+  while (p && p.active && steps < 5000) {
     lastY = p.y;
+    lastTraveled = p.traveled;
     g.advance(1 / 120);
     steps++;
   }
-  const flew = lastY >= ROAD_LENGTH + PROJECTILES.farExit - WEAPONS.rifle.projectileSpeed / 120 - 1e-6;
-  check('Miss: projectile survives to the road exit', !!p && flew, `last y ${lastY.toFixed(2)} (road end ${ROAD_LENGTH} + ${PROJECTILES.farExit})`);
+  const stepLen = WEAPONS.rifle.projectileSpeed / 120;
+  const flew = lastY >= far - stepLen - 1e-6 && lastY <= far + stepLen + 1e-6;
+  const byTravel = !!p && lastTraveled <= p.maxTravel + 1e-9 && g.time - spawnTime < p.lifetime;
+  check('Miss: projectile flies to farVisibleDepth (beyond ROAD_LENGTH) and expires by travel, not lifetime', !!p && flew && byTravel, `last y ${lastY.toFixed(2)} vs far ${far.toFixed(2)} (road end ${ROAD_LENGTH}); traveled ${lastTraveled.toFixed(2)} / budget ${p?.maxTravel.toFixed(2)}, lifetime ${p?.lifetime.toFixed(2)}s`);
+}
+
+// Range: every row ends at the same boundary; lifetime never cuts a bullet first ---
+{
+  const g = makeGame(50);
+  run(g, 1);
+  const shots = run(g, 1);
+  const far = g.cam.farVisibleDepth;
+  let worstEnd = 0;
+  let lifetimeShort = 0;
+  for (const p of g.projectiles) {
+    if (!p.active) continue;
+    worstEnd = Math.max(worstEnd, Math.abs(p.originY + p.maxTravel - far));
+    if (p.lifetime * WEAPONS.rifle.projectileSpeed < p.maxTravel * 1.1) lifetimeShort++;
+  }
+  const rows = distinct(shots.map((s) => s.origin.y.toFixed(3)));
+  check('Range: all rows terminate at farVisibleDepth; lifetime ≥ 1.1× flight', worstEnd < 1e-6 && lifetimeShort === 0 && rows >= 5, `${rows} distinct muzzle depths, worst |end − far| ${worstEnd.toExponential(1)}, far = ${far.toFixed(2)}, budget ${(far + 0.6).toFixed(1)} → flight ≈ ${((far + 0.6) / WEAPONS.rifle.projectileSpeed).toFixed(2)}s`);
+}
+
+// Combat depth: an enemy parked at the deepest legal spawn is still hittable ------
+{
+  const g = makeGame(1);
+  run(g, 0.5);
+  const deep = parkEnemy(g, g.soldiers[0].pos.x + PLAYER_SOLDIER_VISUAL.muzzleForwardOffset * 0, 99); // clamped to maxSpawnDepth
+  deep.pos.x = g.soldiers[0].slot.x + g.anchorX; // lane ≈ soldier x (muzzle offset is inside the hit radius)
+  const before = g.stats.hits;
+  run(g, 4);
+  check('Combat depth: enemy at maxSpawnDepth is hit (COMBAT_DEPTH covers it)', deep.pos.y === ENEMIES.maxSpawnDepth && ENEMIES.maxSpawnDepth + ENEMIES.grunt.depthTolerance <= COMBAT_DEPTH + 1e-9 && g.stats.hits > before, `enemy y ${deep.pos.y.toFixed(2)}, COMBAT_DEPTH ${COMBAT_DEPTH.toFixed(2)}, hits ${g.stats.hits - before}`);
+}
+
+// Pool: sized for the camera; never exhausted at the capped cadence ----------------
+{
+  const req = projectilePoolRequirement(createCamera(402, 874));
+  const g = makeGame(50);
+  g.applyEffect({ kind: 'fireRate', multiplier: MODIFIER_CAPS.fireRateMax }); // capped at 2.5× → 5 shots/s per soldier
+  run(g, req.maxFlightTime * 2.5); // all misses (no enemies); ≥ 2× the longest flight
+  const cadenceOk = approx(g.stats.shotsPerSecond, 50 * R * MODIFIER_CAPS.fireRateMax, 15);
+  check(
+    'Pool: 50 soldiers × capped rate × all misses — peak ≤ theoretical, no exhaustion, pool ≥ required',
+    g.stats.peakActiveProjectiles <= req.theoreticalMaxActive && g.stats.projectilePoolExhausted === 0 && g.projectiles.length >= req.requiredPool && g.stats.peakActiveProjectiles > req.theoreticalMaxActive * 0.6 && cadenceOk,
+    `peak ${g.stats.peakActiveProjectiles} ≤ ${req.theoreticalMaxActive} (${req.maxShotsInFlightPerSoldier}/soldier, flight ${req.maxFlightTime.toFixed(2)}s), pool ${g.projectiles.length} ≥ ${req.requiredPool}, exhausted ${g.stats.projectilePoolExhausted}, ${g.stats.shotsPerSecond} shots/s`,
+  );
+  // Widest supported layout produces the farthest readable depth → largest pool.
+  const wide = new Game({ seed: 3, initialSquad: 50, width: 1024, height: 1366 });
+  wide.scripted = true;
+  const reqWide = projectilePoolRequirement(wide.cam);
+  wide.applyEffect({ kind: 'fireRate', multiplier: MODIFIER_CAPS.fireRateMax });
+  run(wide, reqWide.maxFlightTime * 2.2);
+  check(
+    'Pool: tablet layout (1024×1366) also sized correctly, no exhaustion',
+    wide.stats.peakActiveProjectiles <= reqWide.theoreticalMaxActive && wide.stats.projectilePoolExhausted === 0 && wide.projectiles.length >= reqWide.requiredPool,
+    `far ${wide.cam.farVisibleDepth.toFixed(1)}, peak ${wide.stats.peakActiveProjectiles} ≤ ${reqWide.theoreticalMaxActive}, pool ${wide.projectiles.length} ≥ ${reqWide.requiredPool}`,
+  );
+  // Camera change re-evaluates the requirement and never shrinks the pool (in-flight bullets keep their slots).
+  const g2 = makeGame(1);
+  const before = g2.projectiles.length;
+  g2.setCamera(1024, 1366);
+  const afterWide = g2.projectiles.length;
+  g2.setCamera(320, 480);
+  check(
+    'Pool: camera change keeps pool ≥ requirement and never shrinks',
+    afterWide >= projectilePoolRequirement(g2.cam).requiredPool && afterWide >= before && g2.projectiles.length === afterWide,
+    `${before} → ${afterWide} (tablet) → ${g2.projectiles.length} (small phone), requirement ${projectilePoolRequirement(g2.cam).requiredPool}`,
+  );
+}
+
+// Swept collision: no tunnelling, moving-vs-moving crossing, rate-invariant ---------
+{
+  // Pure geometry: a segment that jumps clear across a thin box must still register.
+  const jump = sweptHit(0, -0.5, 0, 0.5, 0.2, 0.05) && sweptHit(-0.5, 0, 0.5, 0, 0.2, 0.05) && !sweptHit(0.3, -0.5, 0.3, 0.5, 0.2, 0.05) && sweptHit(0.1, 0.02, 0.1, 0.02, 0.2, 0.05);
+  check('Sweep: segment crossing a thin hitbox between steps is a hit; parallel miss is not', jump, 'vertical/horizontal crossings hit, offset miss, point-inside hit');
+
+  // Engine: a fast lateral crosser (scripted 6 units/s, crossing a 0.13 hitbox in ~1 step) is hit.
+  const hitsAtRate = (hostDt: number) => {
+    const g = makeGame(1, 11);
+    run(g, 1, hostDt);
+    const lane = g.soldiers[0].pos.x;
+    const e = parkEnemy(g, lane - 1.2, 3.0);
+    let hits = 0;
+    let last = g.stats.hits;
+    let t = 0;
+    // Crosser sprints laterally at 6 u/s: teleports through the lane in ≤ 2 sim steps.
+    while (t < 1.5) {
+      g.advance(hostDt);
+      t += hostDt;
+      e.prevX = e.pos.x;
+      e.pos.x = lane - 1.2 + 6 * t;
+      if (g.stats.hits > last) {
+        hits += g.stats.hits - last;
+        last = g.stats.hits;
+      }
+    }
+    return { hits, shots: g.stats.shotsFired };
+  };
+  const r30 = hitsAtRate(1 / 30);
+  const r60 = hitsAtRate(1 / 60);
+  const r120 = hitsAtRate(1 / 120);
+  check('Sweep: fast lateral crosser is hit; identical at 30/60/120 Hz host rate', r30.hits > 0 && r30.hits === r60.hits && r60.hits === r120.hits, `hits 30 Hz ${r30.hits}, 60 Hz ${r60.hits}, 120 Hz ${r120.hits} (${r60.shots} shots)`);
+  // Temporal alignment: targets move before projectiles are swept, so after one
+  // substep enemy prev→pos and projectile prev→pos describe the same interval.
+  {
+    const g = makeGame(5, 7);
+    run(g, 0.6);
+    const e = g.spawnEnemy('runner', 0.4, 5.0);
+    g.spawnBoss();
+    g.advance(SIM.fixedStep);
+    const eStep = e.prevY - e.pos.y;
+    const b = g.boss;
+    const bStep = b.prevY - b.pos.y;
+    const p = g.projectiles.find((q) => q.active)!;
+    const pStep = p.y - p.prevY;
+    const ok =
+      Math.abs(eStep - e.speed * SIM.fixedStep) < 1e-9 &&
+      Math.abs(bStep - BOSS.approachSpeed * SIM.fixedStep) < 1e-9 &&
+      Math.abs(pStep - p.vy * SIM.fixedStep) < 1e-9;
+    check('Sweep: enemy, boss and projectile prev→pos all span the same substep', ok, `enemy Δy ${eStep.toFixed(5)} (speed·dt ${(e.speed * SIM.fixedStep).toFixed(5)}), boss Δy ${bStep.toFixed(5)}, projectile Δy ${pStep.toFixed(4)}`);
+  }
 }
 
 // TEST C — moving enemy is hit only while crossing the lane -------------------
@@ -252,7 +380,7 @@ for (const n of [1, 5, 10, 25, 50]) {
   }
   const columns = distinct(slots.map((s) => s.x.toFixed(6)));
   const rearY = Math.min(...slots.map((s) => s.y));
-  const onRoad = anchorLimitFor(n) + layout.halfWidth <= SQUAD.roadHalfWidth + 1e-9;
+  const onRoad = anchorLimitFor(n) + layout.footprintHalfWidth + SQUAD.formationRoadMargin <= SQUAD.roadHalfWidth + 1e-9;
   check(
     `Formation ${n}: straight symmetric block`,
     slots.length === n && symmetric && widest <= SQUAD.formationMaxWidth + 1e-9 && columns <= SQUAD.formationMaxColumns && rows.size === layout.rows && rearY >= -SQUAD.formationMaxRearDepth - 1e-9 && onRoad,
@@ -266,7 +394,7 @@ for (const n of [1, 5, 10, 25, 50]) {
   const monotonic = cols.every((c, i) => i === 0 || c >= cols[i - 1]);
   check(
     'Formation: growth never narrows the block, columns capped',
-    monotonic && Math.max(...cols) === SQUAD.formationMaxColumns && cols[4] === 3 && cols[19] === 5,
+    monotonic && Math.max(...cols) === SQUAD.formationMaxColumns && SQUAD.formationMaxColumns === 5 && cols[4] === 3 && cols[11] === 4 && cols[23] === 5 && formationColumns(50) === 5,
     `columns 1..50 = ${cols.filter((_, i) => [0, 1, 2, 3, 4, 5, 8, 9, 18, 19, 24, 49].includes(i)).join('/')} (at 1/2/3/4/5/6/9/10/19/20/25/50)`,
   );
 }
@@ -278,9 +406,61 @@ for (const n of [1, 5, 10, 25, 50]) {
     for (const s of formationSlots(n)) rows.set(s.y, (rows.get(s.y) ?? 0) + 1);
     return [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, c]) => c).join('+');
   };
-  const got = [1, 2, 3, 4, 5, 6, 9, 20].map(shape);
-  const want = ['1', '2', '1+2', '2+2', '3+2', '3+3', '3+3+3', '5+5+5+5'];
-  check('Formation: small squads are compact (1, 2, wedge, 2×2, 3+2, 3×2, 3×3, 5×4)', got.join(' ') === want.join(' '), `front→back rows: ${got.join('  ')}`);
+  const got = [1, 2, 3, 4, 5, 6, 9, 12, 20, 24, 50].map(shape);
+  const want = ['1', '2', '1+2', '2+2', '3+2', '3+3', '3+3+3', '4+4+4', '4+4+4+4+4', '5+5+5+5+4', '5+5+5+5+5+5+5+5+5+5'];
+  check('Formation: rows before width (1, 2, wedge, 2×2, 3+2, 3×2, 3×3, 4×3, 4×5, 5×4+4, 5×10)', got.join(' ') === want.join(' '), `front→back rows: ${got.join('  ')}`);
+  const l50 = formationLayout(50);
+  check('Formation: 50 = 5 × 10 within the depth budget', l50.columns === 5 && l50.rows === 10 && l50.frontY - l50.rearY <= SQUAD.formationMaxDepth + 1e-9 && l50.rearY >= -SQUAD.formationMaxRearDepth - 1e-9 && l50.halfWidth * 2 <= SQUAD.formationMaxWidth + 1e-9, `${l50.columns}×${l50.rows}, centre span ${(l50.halfWidth * 2).toFixed(2)}, footprint ${(l50.footprintHalfWidth * 2).toFixed(2)}, front ${l50.frontY.toFixed(2)} rear ${l50.rearY.toFixed(2)}`);
+}
+
+// Screen space: the 50-soldier block stays inside the safe area at both drag extremes
+{
+  const cam = createCamera(402, 874);
+  const bottomInset = 34; // iPhone home indicator
+  const slots = formationSlots(50);
+  const layout = formationLayout(50);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const dir of [-1, 1]) {
+    const anchor = dir * anchorLimitFor(50);
+    for (const s of slots) {
+      const f = spriteFrame(cam, PLAYER_SOLDIER_VISUAL, s.x + anchor, s.y, 0);
+      minX = Math.min(minX, f.left);
+      maxX = Math.max(maxX, f.left + f.width);
+      minY = Math.min(minY, f.top);
+      maxY = Math.max(maxY, f.footY);
+    }
+  }
+  // Vertical: the whole block (sprite tops to rear feet) inside the safe area.
+  const insideY = minY >= 0 && maxY <= cam.height - bottomInset;
+  // Horizontal: every rendered sprite inside the *road* at its own row. The road is
+  // wider than the screen near the camera (halfWidthBase = 0.56 × width), so at the
+  // clamp extreme the outer columns of the rear rows are partly beyond the screen
+  // edge — a camera property that predates v0.3.6 (v0.3.5 overflowed by ~89 pt). The
+  // overflow is reported, and the centred block must be fully on-screen.
+  let outsideRoad = false;
+  for (const dir of [-1, 1]) {
+    const anchor = dir * anchorLimitFor(50);
+    for (const s of slots) {
+      const f = spriteFrame(cam, PLAYER_SOLDIER_VISUAL, s.x + anchor, s.y, 0);
+      if (f.left < project(cam, -1, s.y).x - 0.5 || f.left + f.width > project(cam, 1, s.y).x + 0.5) outsideRoad = true;
+    }
+  }
+  let cMinX = Infinity;
+  let cMaxX = -Infinity;
+  for (const s of slots) {
+    const f = spriteFrame(cam, PLAYER_SOLDIER_VISUAL, s.x, s.y, 0);
+    cMinX = Math.min(cMinX, f.left);
+    cMaxX = Math.max(cMaxX, f.left + f.width);
+  }
+  const overflow = Math.max(0, -minX, maxX - cam.width);
+  check(
+    'Screen: 50 soldiers inside the vertical safe area and the road at both edges; centred block fully on-screen',
+    insideY && !outsideRoad && cMinX >= 0 && cMaxX <= cam.width && layout.frontY <= SQUAD.formationMaxFrontAdvance + 1e-9,
+    `y ${minY.toFixed(0)}..${maxY.toFixed(0)} of ${cam.height - bottomInset}; centred x ${cMinX.toFixed(0)}..${cMaxX.toFixed(0)} of ${cam.width}; edge extreme x ${minX.toFixed(0)}..${maxX.toFixed(0)} (rear-row overflow past the screen edge ${overflow.toFixed(0)} pt, road itself extends to ${project(cam, 1, layout.rearY).x.toFixed(0)}); front y ${layout.frontY.toFixed(2)}`,
+  );
 }
 
 // Test A (compact) — 5 soldiers noticeably tighter than one full-width row --------
@@ -306,9 +486,26 @@ for (const [label, dir] of [
   g.setInputX(dir * 5); // far beyond the clamp
   run(g, 2);
   const outer = Math.max(...g.soldiers.map((s) => Math.abs(s.pos.x)));
-  const safe = SQUAD.roadHalfWidth - SQUAD.formationRoadMargin;
+  const safe = SAFE_CENTRE;
   const straight = run(g, 1).every((s) => s.direction.x === ROAD_FORWARD.x && s.direction.y === ROAD_FORWARD.y);
   check(`Test ${label}: outermost soldier stays inside the road, fire still straight`, outer <= safe + 0.02 && straight, `outermost |x| ${outer.toFixed(2)} ≤ ${safe.toFixed(2)}, anchor ${g.anchorX.toFixed(2)}`);
+}
+
+// Edge drag at 5/10/20/30/50: rendered edge never crosses the margin ---------------
+{
+  const rows: string[] = [];
+  let ok = true;
+  for (const n of [5, 10, 20, 30, 50]) {
+    for (const dir of [-1, 1]) {
+      const g = makeGame(n);
+      g.setInputX(dir * 5);
+      run(g, 2.5);
+      const outerEdge = Math.max(...g.soldiers.map((s) => Math.abs(s.pos.x))) + SOLDIER_HALF_WIDTH;
+      if (outerEdge > SQUAD.roadHalfWidth - SQUAD.formationRoadMargin + 0.02) ok = false;
+      if (dir === 1) rows.push(`${n}: edge ${outerEdge.toFixed(2)} (limit ±${anchorLimitFor(n).toFixed(2)})`);
+    }
+  }
+  check('Edge drag 5/10/20/30/50: rendered edge ≤ road − margin', ok, rows.join(', '));
 }
 
 // Tests D/E — 20 and 50 soldiers: rows, capped width, meaningful drag --------------
@@ -321,14 +518,14 @@ for (const n of [20, 50]) {
   const shooters = distinct(run(g, 2).map((s) => s.soldierId));
   check(
     `Test ${n === 20 ? 'D' : 'E'}: ${n} soldiers add rows, width capped, drag meaningful, ${n} shooters`,
-    layout.rows >= 4 && layout.halfWidth * 2 <= SQUAD.formationMaxWidth + 1e-9 && anchorLimitFor(n) >= 0.4 && outer <= SQUAD.roadHalfWidth - SQUAD.formationRoadMargin + 0.02 && shooters === n,
+    layout.rows >= 4 && layout.halfWidth * 2 <= SQUAD.formationMaxWidth + 1e-9 && anchorLimitFor(n) >= 0.4 && outer <= SAFE_CENTRE + 0.02 && shooters === n,
     `${layout.columns}×${layout.rows}, width ${(layout.halfWidth * 2).toFixed(2)}, safe ±${anchorLimitFor(n).toFixed(2)}, outermost |x| ${outer.toFixed(2)}, shooters ${shooters}`,
   );
 }
 
 // Losing soldiers at the edge never pushes survivors past the margin ---------------
 {
-  const safe = SQUAD.roadHalfWidth - SQUAD.formationRoadMargin;
+  const safe = SAFE_CENTRE;
   let worst = 0;
   for (const n of [20, 10, 5, 2]) {
     const g = makeGame(n);
@@ -477,16 +674,11 @@ for (const n of [20, 50]) {
   }
 }
 
-// Stress: 500+ projectiles in flight against a clustered wall of 300 enemies --
-// the worst case for collision queries. Slower, longer-lived tracers are used so
-// the fixed pool actually fills up (the real weapon never keeps this many alive).
+// Stress: 50 soldiers at capped cadence against a clustered wall of 300 enemies —
+// the worst case for collision queries with the real (auto-sized) pool.
 {
-  const savedSpeed = WEAPONS.rifle.projectileSpeed;
-  const savedLifetime = PROJECTILES.lifetime;
-  WEAPONS.rifle.projectileSpeed = 2.4;
-  PROJECTILES.lifetime = 2.6;
   const g = makeGame(50, 3);
-  g.applyEffect({ kind: 'fireRate', multiplier: 2.5 });
+  g.applyEffect({ kind: 'fireRate', multiplier: MODIFIER_CAPS.fireRateMax });
   for (let i = 0; i < 300; i++) g.spawnEnemy(i % 5 === 0 ? 'elite' : 'grunt', -0.3 + (i % 10) * 0.066, 5.0 + Math.floor(i / 10) * 0.027);
   for (const e of g.enemies) {
     e.hp = 1e9;
@@ -505,12 +697,27 @@ for (const n of [20, 50]) {
   }
   const avg = (performance.now() - t0) / frames;
   check(
-    'Stress: 50 soldiers / 300 clustered enemies / 500+ projectiles',
-    maxActive >= 500 && avg < 6,
-    `avg sim ${avg.toFixed(2)} ms/frame, peak ${peak.toFixed(2)} ms, max projectiles active ${maxActive}, shots/s ${g.stats.shotsPerSecond}`,
+    'Stress: 50 soldiers × 2.5× rate / 300 clustered enemies',
+    avg < 6 && g.stats.projectilePoolExhausted === 0,
+    `avg sim ${avg.toFixed(2)} ms/frame, peak ${peak.toFixed(2)} ms, max projectiles active ${maxActive}, shots/s ${g.stats.shotsPerSecond}, exhausted ${g.stats.projectilePoolExhausted}`,
   );
-  WEAPONS.rifle.projectileSpeed = savedSpeed;
-  PROJECTILES.lifetime = savedLifetime;
+}
+
+// Headless sim cost: 50 soldiers, capped cadence, all misses (max live bullets) ----
+{
+  const g = makeGame(50, 5);
+  g.applyEffect({ kind: 'fireRate', multiplier: MODIFIER_CAPS.fireRateMax });
+  run(g, 3);
+  const frames = 600;
+  const t0 = performance.now();
+  let peak = 0;
+  for (let i = 0; i < frames; i++) {
+    const a = performance.now();
+    g.advance(1 / 60);
+    peak = Math.max(peak, performance.now() - a);
+  }
+  const avg = (performance.now() - t0) / frames;
+  check('Perf: 50 soldiers × capped rate, all misses (max in-flight)', avg < 6, `avg sim ${avg.toFixed(2)} ms/frame, peak ${peak.toFixed(2)} ms, active ${g.stats.activeProjectiles} (peak ${g.stats.peakActiveProjectiles}), pool ${g.projectiles.length}`);
 }
 
 let failed = 0;

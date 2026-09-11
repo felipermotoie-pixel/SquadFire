@@ -14,6 +14,18 @@
  */
 import { SQUAD } from './balance';
 import type { Vec2 } from './types';
+import { PLAYER_SOLDIER_VISUAL } from './visuals';
+
+/**
+ * Half of a soldier's rendered width in world units, measured from its foot anchor to
+ * the farther sprite edge (the sprite is not perfectly centred on its anchor). The
+ * formation footprint = centre span + this on each side.
+ */
+export const SOLDIER_HALF_WIDTH =
+  PLAYER_SOLDIER_VISUAL.height * PLAYER_SOLDIER_VISUAL.aspect * Math.max(PLAYER_SOLDIER_VISUAL.anchorX, 1 - PLAYER_SOLDIER_VISUAL.anchorX);
+
+/** Column-cap epsilon so `maxWidth / spacing` never loses a column to float division. */
+const COLUMN_EPS = 1e-6;
 
 export interface FormationLayout {
   rows: number;
@@ -22,8 +34,15 @@ export interface FormationLayout {
   horizontalSpacing: number;
   /** Forward distance between rows (world units). */
   longitudinalSpacing: number;
-  /** Half of the outer lateral extent of the block (0 for one column). */
+  /**
+   * Half of the **centre-to-centre** span of the block (outermost soldier centres;
+   * 0 for one column). Not the rendered footprint — see `footprintHalfWidth`.
+   */
   halfWidth: number;
+  /** Half of the rendered footprint: halfWidth + SOLDIER_HALF_WIDTH. */
+  footprintHalfWidth: number;
+  /** Forward depth of the rearmost row (≤ 0). */
+  rearY: number;
   /** Forward position of the front row. */
   frontY: number;
 }
@@ -42,7 +61,7 @@ export function roadHalfWidthAt(_y: number): number {
 export function formationColumns(n: number): number {
   const count = Math.max(0, Math.floor(n));
   if (count === 0) return 0;
-  const byWidth = Math.floor(SQUAD.formationMaxWidth / SQUAD.formationHorizontalSpacing) + 1;
+  const byWidth = Math.floor(SQUAD.formationMaxWidth / SQUAD.formationHorizontalSpacing + COLUMN_EPS) + 1;
   const cap = Math.max(1, Math.min(SQUAD.formationMaxColumns, byWidth));
   let columns = 1;
   for (const threshold of SQUAD.formationColumnThresholds) if (count >= threshold) columns++;
@@ -52,7 +71,7 @@ export function formationColumns(n: number): number {
 export function formationLayout(n: number): FormationLayout {
   const count = Math.max(0, Math.floor(n));
   if (count === 0) {
-    return { rows: 0, columns: 0, horizontalSpacing: SQUAD.formationHorizontalSpacing, longitudinalSpacing: SQUAD.formationLongitudinalSpacing, halfWidth: 0, frontY: 0 };
+    return { rows: 0, columns: 0, horizontalSpacing: SQUAD.formationHorizontalSpacing, longitudinalSpacing: SQUAD.formationLongitudinalSpacing, halfWidth: 0, footprintHalfWidth: 0, rearY: 0, frontY: 0 };
   }
   const columns = formationColumns(count);
   const rows = Math.ceil(count / columns);
@@ -61,7 +80,8 @@ export function formationLayout(n: number): FormationLayout {
   const depth = (rows - 1) * longitudinalSpacing;
   // Deep blocks creep forward a little so the rear rows do not fall off the screen.
   const frontY = clamp(depth - SQUAD.formationMaxRearDepth, 0, SQUAD.formationMaxFrontAdvance);
-  return { rows, columns, horizontalSpacing, longitudinalSpacing, halfWidth: ((columns - 1) * horizontalSpacing) / 2, frontY };
+  const halfWidth = ((columns - 1) * horizontalSpacing) / 2;
+  return { rows, columns, horizontalSpacing, longitudinalSpacing, halfWidth, footprintHalfWidth: halfWidth + SOLDIER_HALF_WIDTH, rearY: frontY - depth, frontY };
 }
 
 export function formationSlots(n: number): Vec2[] {
@@ -86,14 +106,18 @@ export function formationSlots(n: number): Vec2[] {
 }
 
 /**
- * Furthest the anchor may travel so the whole block — not just its centre — stays on
- * the road with `formationRoadMargin` to spare:
- *   limit = roadHalfWidth(at squad depth) − formationHalfWidth − margin.
+ * Furthest the anchor may travel so the whole *rendered* block stays on the road with
+ * `formationRoadMargin` of air to the barrier:
+ *   limit = min over occupied rows of roadHalfWidthAt(rowY) − footprintHalfWidth − margin
+ * where footprintHalfWidth = centreSpan/2 + SOLDIER_HALF_WIDTH. The most restrictive
+ * road width across the rows is used (not only the anchor depth) so a depth-dependent
+ * road could never push a front or rear row into the barrier.
  */
 export function anchorLimitFor(n: number): number {
   const layout = formationLayout(n);
-  const road = roadHalfWidthAt(0);
-  return Math.max(0.1, Math.min(SQUAD.anchorLimit, road - layout.halfWidth - SQUAD.formationRoadMargin));
+  let road = roadHalfWidthAt(0);
+  for (let r = 0; r < layout.rows; r++) road = Math.min(road, roadHalfWidthAt(layout.frontY - r * layout.longitudinalSpacing));
+  return Math.max(0.1, Math.min(SQUAD.anchorLimit, road - layout.footprintHalfWidth - SQUAD.formationRoadMargin));
 }
 
 function clamp(v: number, lo: number, hi: number): number {

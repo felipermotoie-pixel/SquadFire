@@ -11,6 +11,12 @@
  *   h  = height above the road, same unit (only used for projectile/muzzle visuals)
  */
 
+/**
+ * World position in the canonical road basis (game/balance.ts): `x` is the lateral
+ * offset along ROAD_RIGHT (road half-widths), `y` is the **forward depth** along
+ * ROAD_FORWARD. `y` is the canonical forward-depth coordinate for every entity —
+ * range, combat-depth and formation-depth rules read it through `forwardDepth()`.
+ */
 export interface Vec2 {
   x: number;
   y: number;
@@ -73,6 +79,9 @@ export interface Enemy {
   alive: boolean;
   kind: EnemyKind;
   pos: Vec2;
+  /** Position at the start of the last movement step (relative swept collision). */
+  prevX: number;
+  prevY: number;
   hp: number;
   maxHp: number;
   speed: number;
@@ -95,6 +104,9 @@ export interface Boss {
   active: boolean;
   alive: boolean;
   pos: Vec2;
+  /** Position at the start of the last movement step (relative swept collision). */
+  prevX: number;
+  prevY: number;
   hp: number;
   maxHp: number;
   /** Seconds since spawn. */
@@ -119,8 +131,13 @@ export interface Projectile {
   active: boolean;
   ownerSoldierId: number;
   weaponId: WeaponId;
+  /** Lateral position (ROAD_RIGHT). */
   x: number;
+  /** Forward depth (ROAD_FORWARD) — canonical depth coordinate. */
   y: number;
+  /** Position at the start of the current simulation step (swept collision). */
+  prevX: number;
+  prevY: number;
   /** Velocity in the road basis. Fixed at spawn; never steered afterwards. */
   vx: number;
   vy: number;
@@ -129,9 +146,17 @@ export interface Projectile {
   /** Ground origin (for the debug path overlay). */
   originX: number;
   originY: number;
+  /** Distance flown along the velocity (world units). */
   traveled: number;
+  /**
+   * Travel budget: farVisibleDepth − forwardDepth(spawn). The bullet expires when
+   * `traveled` exceeds it (all rows end at the same distant boundary). Rendering may
+   * fade the tracer only over the final fraction of this budget.
+   */
+  maxTravel: number;
   damage: number;
   spawnTime: number;
+  /** Backstop only (= maxTravel / speed × margin); never shorter than the flight. */
   lifetime: number;
 }
 
@@ -217,6 +242,10 @@ export interface GameStats {
   /** Time spent in the run (seconds, excluding pause). */
   elapsed: number;
   activeProjectiles: number;
+  /** Highest simultaneous live-projectile count seen this run. */
+  peakActiveProjectiles: number;
+  /** Shots dropped because the pool was full. Must stay 0 (pool is sized for the camera). */
+  projectilePoolExhausted: number;
   activeEnemies: number;
   activeSoldiers: number;
   poolProjectiles: number;

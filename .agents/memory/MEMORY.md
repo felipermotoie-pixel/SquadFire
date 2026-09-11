@@ -2,3 +2,4 @@
 - [RN 0.86 style/API gotchas](rn-086-style-api.md) — absoluteFill only, pointerEvents via style, exclude Node scripts from app tsconfig.
 - [Formation clamp sync](formation-clamp-sync.md) — any squad-size change must reassign slots and clamp anchor+target the same frame, or edge-parked squads leave the road.
 - [Skia shader masking](skia-shader-masking.md) — Modulate blackens; compose with MakeBlend(SrcIn); noise dominates CPU harness cost; re-measure generated art anchors.
+- [Projectile range, pool, swept collision](projectile-range-pool.md) — width-fraction far boundary, targets move before sweep, never recycle live bullets, road wider than screen, native bundle needs metro empty-module for canvaskit.

@@ -44,7 +44,7 @@ const MAST_PITCH = 4;
 const UNIT_RECT = Skia.XYWHRect(0, 0, 1, 1);
 /** Fraction of the skyline painting's height where its sea horizon sits (measured from the asset). */
 const HORIZON_IMAGE_LINE = 0.635;
-import { project, unitPx, type CameraLayout } from '@/game/camera';
+import { project, unitPx, type CameraLayout, type Projected } from '@/game/camera';
 import { gateBigNumber, gateSmallLabel, type Game } from '@/game/engine';
 import { roadHalfWidthAt } from '@/game/formation';
 import { emptyFrame, spriteFrame, type SpriteFrame } from '@/game/sprite-geometry';
@@ -70,6 +70,15 @@ interface Renderable {
 }
 
 const DEG = 180 / Math.PI;
+/** Tracer tail length in world units (≈ 65 pt at the squad line, ≈ 5 pt at the far limit). */
+const TRACER_TAIL = 0.25;
+const TRACER_TAIL_MIN = 0.03;
+/** Perspective scale below which tracers use the lower-opacity "distant" band. */
+const TRACER_DISTANT_SCALE = 0.18;
+/** Fraction of maxTravel over which a missed bullet dissolves at the end of its budget. */
+const TRACER_FADE_FRACTION = 0.12;
+/** Baseline alpha of the far/distant glow paint (PALETTE.tracerGlow carries its own alpha for near). */
+const TRACER_GLOW_ALPHA = 0.32;
 const byDepthDesc = (a: Renderable, b: Renderable) => b.y - a.y;
 
 export class SceneRenderer {
@@ -89,8 +98,16 @@ export class SceneRenderer {
   private hazePaint = Skia.Paint();
 
   private shadowPath = Skia.Path.Make();
+  /** Tracer batches by depth band (see drawTracers): near / far / distant / end-fade. */
   private tracerPathNear = Skia.Path.Make();
   private tracerPathFar = Skia.Path.Make();
+  private tracerPathDistant = Skia.Path.Make();
+  /** End-fade tracers are drawn individually (per-tracer alpha): [x0, y0, x1, y1, fade] × count. */
+  private tracerFadeSegs: number[] = [];
+  private tracerFadeCount = 0;
+  private tracerAny = false;
+  private prjHead: Projected = { x: 0, y: 0, scale: 1 };
+  private prjTail: Projected = { x: 0, y: 0, scale: 1 };
   private tmpPath = Skia.Path.Make();
   private sparkPath = Skia.Path.Make();
 
@@ -171,9 +188,11 @@ export class SceneRenderer {
     this.textShadowPaint.setAntiAlias(true);
     this.textShadowPaint.setColor(Skia.Color(PALETTE.gateTextShadow));
 
+    // Rifle tracers: thin amber core + faint orange glow. Widths are in points; the
+    // far pair is used for scale ≤ 0.5 and never drops below 1 px (see drawTracers).
     for (const [core, glow, cw, gw] of [
-      [this.tracerCore, this.tracerGlow, 2.4, 7],
-      [this.tracerCoreFar, this.tracerGlowFar, 1.3, 3.6],
+      [this.tracerCore, this.tracerGlow, 1.6, 3.5],
+      [this.tracerCoreFar, this.tracerGlowFar, 1.0, 2.0],
     ] as const) {
       core.setAntiAlias(true);
       core.setStyle(PaintStyle.Stroke);
@@ -234,7 +253,7 @@ export class SceneRenderer {
       this.paint, this.stroke, this.glowPaint, this.shadowPaint, this.spritePaint, this.flashPaint, this.hazePaint,
       this.textPaint, this.textShadowPaint, this.tracerCore, this.tracerGlow, this.tracerCoreFar, this.tracerGlowFar,
     ]) pt.dispose();
-    for (const path of [this.roadPath, this.tmpPath, this.mastPath, this.shadowPath, this.tracerPathNear, this.tracerPathFar, this.sparkPath]) path.dispose();
+    for (const path of [this.roadPath, this.tmpPath, this.mastPath, this.shadowPath, this.tracerPathNear, this.tracerPathFar, this.tracerPathDistant, this.sparkPath]) path.dispose();
   }
 
   setAssets(assets: SceneAssets): void {
@@ -261,9 +280,13 @@ export class SceneRenderer {
     this.drawGroundVfx(canvas, game);
     this.drawShadows(canvas, game);
     this.drawUnits(canvas, game, t);
+    // Split tracer pass: the soft glow goes under the haze like every other lit
+    // object; the thin core is re-drawn above it so distant shots stay readable
+    // without touching the haze itself.
     this.drawTracers(canvas, game);
     this.drawVfx(canvas, game);
     this.drawHaze(canvas, cam);
+    this.drawTracerCores(canvas);
     this.drawPopups(canvas, game);
     if (debug) this.drawDebug(canvas, game);
 
@@ -1120,34 +1143,95 @@ export class SceneRenderer {
   // Projectiles & VFX
   // ---------------------------------------------------------------------------
 
+  /**
+   * Builds the tracer batches and draws their glow layer. Each bullet is a short
+   * fixed world-length tail (TRACER_TAIL, clamped to the distance flown), so near
+   * shots read as brief rifle tracers instead of long lasers and far shots stay
+   * distinct dashes. Bullets are batched by depth band: near (scale > 0.5), far and
+   * distant (scale ≤ TRACER_DISTANT_SCALE, lower opacity). Bullets in the final
+   * TRACER_FADE_FRACTION of their travel budget are drawn one by one with the tail
+   * and alpha scaled by the remaining fraction, so they dissolve to zero at the
+   * far boundary instead of popping out. Projections use two scratch objects.
+   */
   private drawTracers(canvas: SkCanvas, game: Game): void {
     const cam = game.cam;
     const near = this.tracerPathNear;
     const far = this.tracerPathFar;
+    const distant = this.tracerPathDistant;
+    const segs = this.tracerFadeSegs;
+    const head = this.prjHead;
+    const tail = this.prjTail;
     near.reset();
     far.reset();
+    distant.reset();
+    let fadeCount = 0;
     let any = false;
     for (const p of game.projectiles) {
       if (!p.active) continue;
       any = true;
-      // Constant flight height; the tail is a short segment back along the velocity.
       const h = p.h;
-      const head = project(cam, p.x, p.y);
-      const hu = unitPx(cam, p.y);
-      const tailLen = Math.min(0.09, p.traveled / Math.max(1e-6, Math.hypot(p.vx, p.vy)));
-      const tx = p.x - p.vx * tailLen;
-      const ty = p.y - p.vy * tailLen;
-      const tail = project(cam, tx, ty);
-      const tu = unitPx(cam, ty);
-      const path = head.scale > 0.5 ? near : far;
-      path.moveTo(tail.x, tail.y - h * tu);
-      path.lineTo(head.x, head.y - h * hu);
+      const speed = Math.hypot(p.vx, p.vy);
+      if (speed < 1e-6) continue;
+      const remaining = p.maxTravel - p.traveled;
+      const fadeSpan = p.maxTravel * TRACER_FADE_FRACTION;
+      const endFade = remaining < fadeSpan ? Math.max(0, remaining / fadeSpan) : 1;
+      const tailLen = Math.max(TRACER_TAIL_MIN, Math.min(TRACER_TAIL, p.traveled) * endFade);
+      project(cam, p.x, p.y, head);
+      const hu = cam.halfWidthBase * head.scale;
+      const tx = p.x - (p.vx / speed) * tailLen;
+      const ty = p.y - (p.vy / speed) * tailLen;
+      project(cam, tx, ty, tail);
+      const tu = cam.halfWidthBase * tail.scale;
+      const x0 = tail.x;
+      const y0 = tail.y - h * tu;
+      const x1 = head.x;
+      const y1 = head.y - h * hu;
+      if (endFade < 1) {
+        const i = fadeCount * 5;
+        segs[i] = x0;
+        segs[i + 1] = y0;
+        segs[i + 2] = x1;
+        segs[i + 3] = y1;
+        segs[i + 4] = endFade;
+        fadeCount++;
+        continue;
+      }
+      const path = head.scale > 0.5 ? near : head.scale > TRACER_DISTANT_SCALE ? far : distant;
+      path.moveTo(x0, y0);
+      path.lineTo(x1, y1);
     }
+    this.tracerAny = any;
+    this.tracerFadeCount = fadeCount;
     if (!any) return;
-    canvas.drawPath(far, this.tracerGlowFar);
-    canvas.drawPath(far, this.tracerCoreFar);
+    const glowFar = this.tracerGlowFar;
+    // Fading tracers continue the distant band's alpha down to zero.
+    for (let i = 0; i < fadeCount; i++) {
+      const k = i * 5;
+      glowFar.setAlphaf(TRACER_GLOW_ALPHA * 0.75 * segs[k + 4]);
+      canvas.drawLine(segs[k], segs[k + 1], segs[k + 2], segs[k + 3], glowFar);
+    }
+    glowFar.setAlphaf(TRACER_GLOW_ALPHA * 0.75);
+    canvas.drawPath(distant, glowFar);
+    glowFar.setAlphaf(TRACER_GLOW_ALPHA);
+    canvas.drawPath(far, glowFar);
     canvas.drawPath(near, this.tracerGlow);
-    canvas.drawPath(near, this.tracerCore);
+  }
+
+  /** Second half of the tracer pass: thin cores above the haze (paths built in drawTracers). */
+  private drawTracerCores(canvas: SkCanvas): void {
+    if (!this.tracerAny) return;
+    const coreFar = this.tracerCoreFar;
+    const segs = this.tracerFadeSegs;
+    for (let i = 0; i < this.tracerFadeCount; i++) {
+      const k = i * 5;
+      coreFar.setAlphaf(0.7 * segs[k + 4]);
+      canvas.drawLine(segs[k], segs[k + 1], segs[k + 2], segs[k + 3], coreFar);
+    }
+    coreFar.setAlphaf(0.7);
+    canvas.drawPath(this.tracerPathDistant, coreFar);
+    coreFar.setAlphaf(1);
+    canvas.drawPath(this.tracerPathFar, coreFar);
+    canvas.drawPath(this.tracerPathNear, this.tracerCore);
   }
 
   /** Effects that live on the ground plane and must sit under the units. */
@@ -1226,22 +1310,31 @@ export class SceneRenderer {
         }
         case 'impact':
         case 'impact-boss': {
+          // Compact metallic spark: a small hot flash that collapses fast, plus a few
+          // short radiating sparks. The boss variant is larger and brighter.
           const boss = v.kind === 'impact-boss';
-          const r = (boss ? 0.13 : 0.075) * u * v.scale * (0.6 + k * 0.8);
+          const flash = 1 - k;
+          const r = (boss ? 0.09 : 0.05) * u * v.scale * (0.5 + flash * 0.7);
           g.setShader(this.unitGlow);
-          g.setAlphaf((1 - k) * (boss ? 1 : 0.85));
+          g.setAlphaf(flash * flash * (boss ? 1 : 0.8));
           canvas.save();
           canvas.translate(sx, sy);
           canvas.scale(r, r);
           canvas.drawCircle(0, 0, 1, g);
           canvas.restore();
           g.setShader(null);
+          if (k < 0.5) {
+            p.setColor(Skia.Color(PALETTE.impactCore));
+            p.setAlphaf((1 - k * 2) * 0.95);
+            canvas.drawCircle(sx, sy, Math.max(1, r * 0.3), p);
+            p.setAlphaf(1);
+          }
           // Sparks radiating away from the impact (batched).
-          const n = boss ? 5 : 3;
+          const n = boss ? 6 : 3;
           for (let i = 0; i < n; i++) {
             const a = v.seed * 6.283 + (i / n) * 6.283 + Math.PI;
-            const len = (boss ? 0.16 : 0.1) * u * (0.4 + k);
-            const from = 0.25 * len;
+            const len = (boss ? 0.13 : 0.07) * u * v.scale * (0.35 + k * 0.9);
+            const from = 0.3 * len;
             sparks.moveTo(sx + Math.cos(a) * from, sy + Math.sin(a) * from * 0.7);
             sparks.lineTo(sx + Math.cos(a) * len, sy + Math.sin(a) * len * 0.7);
             sparkCount++;
@@ -1585,7 +1678,7 @@ export class SceneRenderer {
       const lines = [
         `FPS ${st.fps.toFixed(0)}  frame ${st.frameMs.toFixed(1)}ms  peak ${st.peakFrameMs.toFixed(1)}ms  sim ${st.simMs.toFixed(2)}ms`,
         `soldiers ${st.activeSoldiers}  enemies ${st.activeEnemies}  boss ${game.boss.active ? game.boss.hp.toFixed(0) : '-'}`,
-        `projectiles ${st.activeProjectiles}/${st.poolProjectiles}  vfx ${st.poolVfx}`,
+        `projectiles ${st.activeProjectiles}/${st.poolProjectiles} peak ${st.peakActiveProjectiles} dropped ${st.projectilePoolExhausted}  vfx ${st.poolVfx}`,
         `shots/s ${st.shotsPerSecond}  total ${st.shotsFired}  hits ${st.hits}  kills ${st.kills}`,
         `fireRate ×${game.mods.fireRate.toFixed(2)}  damage ×${game.mods.damage.toFixed(2)}  t ${game.time.toFixed(1)}s`,
         `stage ${game.stage} ${game.stageState}  boss stage ${game.isBossStage}  seq ${game.stageCursor.sequence + 1}/${game.stageConfig.sequences.length}  group ${game.stageCursor.group + 1}  queued ${game.remainingScheduledSpawns}  active ${game.activeEnemyCount}`,

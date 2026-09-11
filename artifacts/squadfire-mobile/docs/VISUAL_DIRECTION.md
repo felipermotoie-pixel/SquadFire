@@ -18,7 +18,7 @@ Elevated, pitched-down perspective: the road is widest at the bottom (squad) and
 - Road: warm grey concrete gradient (far → near), slab seams, subtle grain, debris marks.
 - Barriers: three-tone modules (lit inner face on the right, shaded on the left, bright top), cyan rail.
 - Squad: cobalt blue armor. Enemies: crimson armor; elites tinted hotter with a glow. Boss: dark crimson with a left-arm cannon.
-- VFX: warm white tracers with a soft core, pale-gold muzzle stars, amber impact sparks, kill bursts in enemy red.
+- VFX: rifle tracers are short amber-white dashes (`tracerCore` #ffd57a over a faint `tracerGlow` rgba(255,150,60,0.32)), 0.25 u tail near / scaled down to 0.18 far, 1.6 px core near → 1.0 px far, fading over the last 12 % of the travel budget so they dissolve at the far boundary instead of popping. Glow is drawn under the distance haze, cores above it so far shots stay readable. Never laser beams. Muzzle: pale-gold stars (unchanged). Impacts: compact metallic sparks (bright core dot, 3–4 short sparks, 0.14 s; boss impacts larger). Kill bursts in enemy red.
 - Gates: cyan (squad), gold (damage), violet (fire rate) frames with huge numerals.
 
 ## Characters

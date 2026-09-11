@@ -33,8 +33,10 @@ export const PALETTE = {
 
   // Squad
   squadGlow: '#7fe8ff',
-  tracerCore: '#fff7d6',
-  tracerGlow: 'rgba(255,205,110,0.55)',
+  /** Amber rifle-tracer core (v0.3.6: warmer/thinner than the old near-white laser). */
+  tracerCore: '#ffd57a',
+  /** Faint orange glow, drawn with Plus blend under the haze. */
+  tracerGlow: 'rgba(255,150,60,0.32)',
   muzzleCore: '#ffffff',
   muzzleWarm: '#ffc857',
   muzzleEdge: 'rgba(255,140,40,0)',

@@ -4,7 +4,7 @@
  * derived from world depth, so every unit, shadow, gate and projectile shares the
  * same perspective rules (no ad-hoc scaling).
  */
-import { ROAD_LENGTH } from './balance';
+import { PROJECTILES, ROAD_LENGTH } from './balance';
 
 export interface CameraLayout {
   width: number;
@@ -18,6 +18,15 @@ export interface CameraLayout {
   centerX: number;
   /** Perspective constant: scale(y) = focal / (y + focal). */
   focal: number;
+  /**
+   * Forward depth (world units) where the readable track ends for this layout: the
+   * depth at which the road's projected width drops below
+   * PROJECTILES.minReadableRoadWidthFraction of the screen width. Missed bullets fly
+   * to exactly here (their travel budget is farVisibleDepth − spawn depth), so the
+   * logical projectile and the visible track agree. ≈ 23.1 world units (≈ 4.8 % of the
+   * screen height below the horizon) for the v0.3.5 camera constants.
+   */
+  farVisibleDepth: number;
 }
 
 export interface Projected {
@@ -34,20 +43,32 @@ export function createCamera(width: number, height: number): CameraLayout {
   // (squad, hitboxes, muzzles) keeps the same on-screen size when the road grows.
   const farScale = 0.22;
   const focal = (farScale * ROAD_LENGTH) / (1 - farScale);
+  const halfWidthBase = width * 0.56;
+  // Readable-track limit: scale at which the projected road (2 × halfWidthBase × s)
+  // is minReadableRoadWidthFraction × width wide, converted back to a depth with the
+  // inverse of depthScale(). Never closer than the combat zone.
+  const readableScale = Math.min(1, (PROJECTILES.minReadableRoadWidthFraction * width) / 2 / halfWidthBase);
+  const farVisibleDepth = Math.max(ROAD_LENGTH + 1, focal / readableScale - focal);
   return {
     width,
     height,
     // High horizon + low squad line = the longest possible run of visible road in portrait.
     horizonY: height * 0.175,
     baseY: height * 0.715,
-    halfWidthBase: width * 0.56,
+    halfWidthBase,
     centerX: width / 2,
     focal,
+    farVisibleDepth,
   };
 }
 
 export function depthScale(cam: CameraLayout, y: number): number {
   return cam.focal / (y + cam.focal);
+}
+
+/** Inverse of depthScale(): the forward depth that projects at perspective scale `s`. */
+export function depthForScale(cam: CameraLayout, s: number): number {
+  return cam.focal / s - cam.focal;
 }
 
 export function project(cam: CameraLayout, x: number, y: number, out: Projected = { x: 0, y: 0, scale: 1 }): Projected {

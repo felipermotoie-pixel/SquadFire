@@ -17,7 +17,7 @@ Expo (SDK 57) portrait mobile squad shooter. One artifact: `artifacts/squadfire-
 ## Data flow per frame
 
 1. `Battlefield` rAF tick → `game.advance(dt)` (clamped, split into fixed substeps).
-2. Engine updates: input/anchor → formation slots → soldiers (cadence, `fireShot` straight along `ROAD_FORWARD`) → projectiles (grid collision) → enemies/boss → gates → VFX/popups → stage director (state machine over `StageConfig`, see `STAGE_SYSTEM.md`) → stats.
+2. Engine updates: input/anchor → formation slots → soldiers (cadence, `fireShot` straight along `ROAD_FORWARD`) → projectiles (swept grid collision inside `COMBAT_DEPTH`, travel budget to `farVisibleDepth`) → enemies/boss → gates → VFX/popups → stage director (state machine over `StageConfig`, see `STAGE_SYSTEM.md`) → stats.
 3. Each `fireShot` creates one `ShotEvent` (soldier id, muzzle world position, direction = road forward). The event spawns a projectile, muzzle flash VFX, recoil, and is forwarded to `onShot` (audio hook / tests). There is no targeting module.
 4. Renderer records a `SkPicture` from the game state; the shared value swap redraws the canvas without a React render.
 5. Every ~120 ms (or immediately when events are pending) `onSync(game)` lets the HUD drain events and refresh its state.
@@ -25,15 +25,15 @@ Expo (SDK 57) portrait mobile squad shooter. One artifact: `artifacts/squadfire-
 ## World model
 
 - Coordinates: `x` lateral in road half-widths (±1 = barrier inner faces), `y` forward (0 = squad line, `ROAD_LENGTH` = 8 = spawn zone), `h` height in the same units.
-- Camera (`game/camera.ts`): perspective scale `focal / (y + focal)`, horizon at 17.5 % of the screen height, squad line at 71.5 %, road half-width at the squad line = 0.56 × screen width. Focal is derived from `ROAD_LENGTH` so the spawn line reads at ≈ 0.22 scale; the renderer draws the bridge to `ROAD_FAR` = 90 with LOD (detailed barriers to y = 16, then merged strips).
+- Camera (`game/camera.ts`): perspective scale `focal / (y + focal)`, horizon at 17.5 % of the screen height, squad line at 71.5 %, road half-width at the squad line = 0.56 × screen width (wider than the screen: a squad clamped to the road edge can have its rear outer column past the screen edge). `farVisibleDepth` (≈ 23.1) is derived here: the depth where the road projects narrower than 10 % of the screen width; projectiles die there. Focal is derived from `ROAD_LENGTH` so the spawn line reads at ≈ 0.22 scale; the renderer draws the bridge to `ROAD_FAR` = 90 with LOD (detailed barriers to y = 16, then merged strips).
 - Sprite geometry (`game/sprite-geometry.ts`) is shared by the sim (muzzle position) and renderer (draw rect) so projectiles always leave the drawn muzzle.
 
 ## Pools and limits
 
-- Projectiles: fixed pool of 640 (`PROJECTILES.poolSize`), oldest recycled when full.
+- Projectiles: pool sized from the camera (`projectilePoolRequirement`: 50 soldiers × capped rate × rear-muzzle flight time to `farVisibleDepth`, × 1.3 → 780; floor `PROJECTILES.poolSize` 640), grown in place on `setCamera`. When exhausted the new shot is dropped and counted (`stats.projectilePoolExhausted`), never recycled.
 - VFX: 320 particles, 40 damage popups.
 - Enemies: hard cap 300 alive (`ENEMIES.maxAlive`).
-- Collision uses a 2D grid (0.5 depth × 0.5 lateral cells, 3×3 neighbourhood query) rebuilt each substep; projectile checks stay O(projectiles × local density).
+- Collision uses a 2D grid (0.5 depth × 0.5 lateral cells, 3×3 neighbourhood query) rebuilt each substep; projectile checks stay O(projectiles × local density) and are skipped entirely once a projectile is past `COMBAT_DEPTH` (≈ 8.9). Each candidate is tested with a relative swept segment (`sweptHit`).
 - No per-frame allocations in the hot loop apart from Skia picture recording; the renderer pools its depth-sort entries and caches every shader (camera gradients rebuilt only on resize, gate gradients per colour pair). Pictures/recorders are disposed explicitly, one frame late.
 
 ## Events
