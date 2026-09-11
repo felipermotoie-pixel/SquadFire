@@ -3,3 +3,5 @@
 - [Formation clamp sync](formation-clamp-sync.md) — any squad-size change must reassign slots and clamp anchor+target the same frame, or edge-parked squads leave the road.
 - [Skia shader masking](skia-shader-masking.md) — Modulate blackens; compose with MakeBlend(SrcIn); noise dominates CPU harness cost; re-measure generated art anchors.
 - [Projectile range, pool, swept collision](projectile-range-pool.md) — width-fraction far boundary, targets move before sweep, never recycle live bullets, road wider than screen, native bundle needs metro empty-module for canvaskit.
+- [Squad Power vs visible roster](squad-power-reconciler.md) — power is canonical, roster derived 10:1 via one reconciler; 13 → P10+P3; dev hooks latch progress-ineligible.
+- [Earth balance verdict](earth-balance-verdict.md) — v0.4.0 committed, NOT tagged: bosses die in approach; boss HP/gates/caps are under review, never tune silently; spawns are camera-derived.
