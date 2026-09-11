@@ -68,3 +68,21 @@ Run outcome: **victory** in 832.0 s (13.9 min). Gates crossed: 68.
 - Profile A: sim avg 0.037 ms · peak 3.97 ms · peak projectiles 54 · pool exhausted 0 · peak visible 5
 - Profile B: sim avg 0.031 ms · peak 2.61 ms · peak projectiles 61 · pool exhausted 0 · peak visible 9
 - Profile C: sim avg 0.042 ms · peak 4.57 ms · peak projectiles 266 · pool exhausted 0 · peak visible 25
+
+## Root cause (measured, not tuned)
+
+- Profile B reaches damage ×3 and fire rate ×2.5 during Stage 4 (68 gate pairs per run, 12 s cadence); from then on every gate is either a capped modifier (no-op) or the rare +squad. Effective multiplier 7.5× on power 13 ≈ 1950 DPS.
+- Bullets travel to `farVisibleDepth`, so the boss is hittable from the frame it spawns (≈ 21.9 deep); 4500 HP lasts 2.3 s at 1950 DPS, 18 000 HP 9.2 s. The approach itself is on target (Profile A: 9.99 s), the problem is HP versus the modifier ramp.
+- Profile A (power 5, same caps) still kills the sub-boss in the approach (7.3 s) and only the final boss reaches its hold (18.6 s combat, inside 12–30 s).
+
+## Review options (no option implemented — awaiting sign-off)
+
+| Option | Change | Expected impact (Profile B) | Regression risk | Systems affected | Changes existing upgrade behaviour? |
+|---|---|---|---|---|---|
+| A. Boss HP | Sub 4500 → ~30 000, Final 18 000 → ~60 000 (sized to 1950 DPS × 15 s / 30 s); Profile A would then need ~40 s / ~80 s | Puts both bosses in window for B; A becomes very long | Low: two numbers in `EARTH_ROWS`; render/HUD untouched | `game/stages.ts`, report thresholds | No |
+| B. Gate frequency | `GATES.interval` 12 → 20–24 s (≈ 35–40 pairs/run) so caps arrive around Stage 8–9 | Sub-boss met at ~×1.5/×1.25 (≈ 400 DPS → 11 s), final near caps (≈ 9–12 s, still short) | Medium: also slows Squad Power growth for C-style players, run feel changes | `game/balance.ts` GATES, harness expectations | Yes (rate of upgrades) |
+| C. Gate composition | Cap swap for modifiers (capped ×DMG/×FR gate becomes +squad) and/or lower caps (×2 / ×2) | Lower caps: B DPS at power 13 ≈ 1040 → sub 4.3 s (still short), final 17 s (in window); modifier→squad swap pushes more overkill but keeps gates meaningful | Medium: touches `nextGatePair`, `MODIFIER_CAPS`, HUD labels, fire tests | `game/engine.ts`, `game/balance.ts`, tests | Yes (caps / gate offers) |
+| D. Boss mechanics | Damage gating during approach (e.g. shield until hold, or 25 % damage taken while approaching) and/or hold TTK-based phase | Guarantees `holdReached`; combat TTK = HP / DPS at hold (B: 2.3 s sub / 9 s final → still needs A or C) | Medium-high: new boss state, renderer feedback, tests for "hittable during approach" must flip | `game/engine.ts` boss update, renderer, stage tests | No |
+| E. Leave baseline | Ship authored numbers as-is | Bosses remain approach kills for anyone who takes modifier gates; run length and stage pacing already on target | None | — | No |
+
+Recommended combination for review: **D (approach shield) + A (moderate HP: sub ~9 000, final ~36 000)** — D fixes the structural "dies before arriving" issue independent of build, A sizes the fight at the hold; B/C remain the levers if squad-first play (Profile C, power 242 → 0.6 s final boss) must also be constrained.
