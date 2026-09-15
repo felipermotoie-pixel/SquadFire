@@ -1,5 +1,10 @@
 # SquadFire — Balance (v0.4.0)
 
+Current tuning, 2026-09-15: see [opening balance report](reports/OPENING_BALANCE_2026-09-15.md).
+Gates now grant +1/+2/+3 soldiers every 18 seconds, or ×1.15 cadence / ×1.2 or ×1.3 damage.
+Regular HP by stage: 20/45/75/95/110/130/150/175/200/230. Speed rises from ×1.15 to ×2.05.
+The historical pacing and boss measurements below predate both the P10 firing change and this tuning.
+
 All numbers live in `game/balance.ts` (weapons, squad, caps, far spawn, boss) and `game/stages.ts`
 (Earth table). Measured results: `docs/reports/EARTH_BALANCE_v0.4.0.md` (`pnpm run measure:earth`).
 
@@ -7,19 +12,23 @@ All numbers live in `game/balance.ts` (weapons, squad, caps, far spawn, boss) an
 ```
 squad DPS ≈ squadPower × damage(10) × damageMult × fireRate(2/s) × fireRateMult × hitEfficiency
 ```
-Squad Power enters exactly once: a soldier's bullet deals `damage × damageMult × representedPower`
+Squad Power enters exactly once: a soldier fires at `fireRate × fireRateMult × representedPower`; each bullet deals `damage × damageMult`
 (`SQUAD_STACKING.md`). Modifiers come only from gates and are capped (`MODIFIER_CAPS`: damage ×3, fire
-rate ×2.5). Squad Power caps at 500 (`MAX_SQUAD_POWER`), visible soldiers at 50.
+rate ×2.5). Squad Power caps at 500 (`MAX_SQUAD_POWER`), visible soldiers at 58.
 
 ## Reference numbers (base mods, all lanes hitting)
 | Squad Power | Visible | Shots/s | DPS | Stage-1 grunt (20 HP) kills/s |
 | --- | --- | --- | --- | --- |
 | 5 | 5 | 10 | 100 | 5 |
 | 9 | 9 | 18 | 180 | 9 |
-| 10 | 1 × P10 | 2 | 200 | 2 (one 100-dmg bullet per kill: 80 overkill) |
-| 13 | P10 + P3 | 4 | 260 | — |
-| 100 | 10 × P10 | 20 | 2000 | — |
-| 500 | 50 × P10 | 100 | 10 000 | — |
+| 10 | 1 × P10 | 20 | 200 | 10 |
+| 13 | P10 + 3 × P1 | 26 | 260 | — |
+| 19 | P10 + 9 × P1 | 38 | 380 | — |
+| 100 | 10 × P10 | 200 | 2000 | — |
+| 500 | 50 × P10 | 1000 | 10 000 | — |
+
+Updated 2026-09-15: rapid-fire P10 and individual remainders supersede the old partial-unit rule.
+Earlier balance reports predate this change; actual overkill and boss TTK need fresh measurements.
 At both caps (×3 × ×2.5 = 7.5) power 5 already outputs 750 DPS and power 13 ≈ 1950 DPS.
 
 ## Bosses (absolute HP)

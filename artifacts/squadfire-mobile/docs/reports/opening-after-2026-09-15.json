@@ -1,0 +1,233 @@
+[
+  {
+    "seed": 1337,
+    "policy": "squad",
+    "outcome": "cleared-opening",
+    "stage": 4,
+    "power": 21,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63.2,
+        "power": 8,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 2,
+        "seconds": 69.7,
+        "power": 15,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 7
+      },
+      {
+        "stage": 3,
+        "seconds": 75.1,
+        "power": 21,
+        "gained": 6,
+        "lost": 0,
+        "peakAlive": 4
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 1337,
+    "policy": "damage",
+    "outcome": "cleared-opening",
+    "stage": 4,
+    "power": 13,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63.2,
+        "power": 7,
+        "gained": 2,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 2,
+        "seconds": 71.6,
+        "power": 10,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 3,
+        "seconds": 74.4,
+        "power": 13,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 6
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 1337,
+    "policy": "idle",
+    "outcome": "defeat",
+    "stage": 1,
+    "power": 0,
+    "stages": [],
+    "exhausted": 0
+  },
+  {
+    "seed": 17,
+    "policy": "squad",
+    "outcome": "cleared-opening",
+    "stage": 4,
+    "power": 25,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 62.7,
+        "power": 12,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 2,
+        "seconds": 69.9,
+        "power": 17,
+        "gained": 5,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 3,
+        "seconds": 76,
+        "power": 25,
+        "gained": 8,
+        "lost": 0,
+        "peakAlive": 6
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 17,
+    "policy": "damage",
+    "outcome": "cleared-opening",
+    "stage": 4,
+    "power": 13,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63,
+        "power": 10,
+        "gained": 5,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 2,
+        "seconds": 69.8,
+        "power": 13,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 7
+      },
+      {
+        "stage": 3,
+        "seconds": 75.9,
+        "power": 13,
+        "gained": 0,
+        "lost": 0,
+        "peakAlive": 5
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 17,
+    "policy": "idle",
+    "outcome": "defeat",
+    "stage": 1,
+    "power": 0,
+    "stages": [],
+    "exhausted": 0
+  },
+  {
+    "seed": 29,
+    "policy": "squad",
+    "outcome": "cleared-opening",
+    "stage": 4,
+    "power": 25,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63,
+        "power": 9,
+        "gained": 4,
+        "lost": 0,
+        "peakAlive": 3
+      },
+      {
+        "stage": 2,
+        "seconds": 69.5,
+        "power": 16,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 3,
+        "seconds": 74.9,
+        "power": 25,
+        "gained": 9,
+        "lost": 0,
+        "peakAlive": 6
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 29,
+    "policy": "damage",
+    "outcome": "cleared-opening",
+    "stage": 4,
+    "power": 11,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63,
+        "power": 9,
+        "gained": 4,
+        "lost": 0,
+        "peakAlive": 3
+      },
+      {
+        "stage": 2,
+        "seconds": 67.9,
+        "power": 9,
+        "gained": 0,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 3,
+        "seconds": 73.5,
+        "power": 11,
+        "gained": 2,
+        "lost": 0,
+        "peakAlive": 5
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 29,
+    "policy": "idle",
+    "outcome": "defeat",
+    "stage": 1,
+    "power": 0,
+    "stages": [],
+    "exhausted": 0
+  }
+]

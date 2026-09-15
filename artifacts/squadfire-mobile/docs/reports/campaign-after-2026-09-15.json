@@ -1,0 +1,569 @@
+[
+  {
+    "seed": 1337,
+    "policy": "squad",
+    "outcome": "victory",
+    "stage": 10,
+    "power": 89,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63.2,
+        "power": 8,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 2,
+        "seconds": 69.7,
+        "power": 15,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 7
+      },
+      {
+        "stage": 3,
+        "seconds": 75.1,
+        "power": 21,
+        "gained": 6,
+        "lost": 0,
+        "peakAlive": 4
+      },
+      {
+        "stage": 4,
+        "seconds": 80.5,
+        "power": 28,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 5,
+        "seconds": 87.4,
+        "power": 37,
+        "gained": 9,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 6,
+        "seconds": 79.7,
+        "power": 43,
+        "gained": 6,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 7,
+        "seconds": 85.5,
+        "power": 57,
+        "gained": 14,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 8,
+        "seconds": 89.4,
+        "power": 68,
+        "gained": 11,
+        "lost": 0,
+        "peakAlive": 7
+      },
+      {
+        "stage": 9,
+        "seconds": 92.8,
+        "power": 76,
+        "gained": 8,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 10,
+        "seconds": 109.7,
+        "power": 89,
+        "gained": 13,
+        "lost": 0,
+        "peakAlive": 8
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 1337,
+    "policy": "damage",
+    "outcome": "victory",
+    "stage": 10,
+    "power": 74,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63.2,
+        "power": 7,
+        "gained": 2,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 2,
+        "seconds": 71.6,
+        "power": 10,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 3,
+        "seconds": 74.4,
+        "power": 13,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 4,
+        "seconds": 80.3,
+        "power": 16,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 5,
+        "seconds": 82,
+        "power": 20,
+        "gained": 4,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 6,
+        "seconds": 78.9,
+        "power": 25,
+        "gained": 5,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 7,
+        "seconds": 84.5,
+        "power": 36,
+        "gained": 11,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 8,
+        "seconds": 89.7,
+        "power": 46,
+        "gained": 10,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 9,
+        "seconds": 93.9,
+        "power": 59,
+        "gained": 13,
+        "lost": 0,
+        "peakAlive": 7
+      },
+      {
+        "stage": 10,
+        "seconds": 98.6,
+        "power": 74,
+        "gained": 15,
+        "lost": 0,
+        "peakAlive": 8
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 1337,
+    "policy": "idle",
+    "outcome": "defeat",
+    "stage": 1,
+    "power": 0,
+    "stages": [],
+    "exhausted": 0
+  },
+  {
+    "seed": 17,
+    "policy": "squad",
+    "outcome": "victory",
+    "stage": 10,
+    "power": 94,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 62.7,
+        "power": 12,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 2,
+        "seconds": 69.9,
+        "power": 17,
+        "gained": 5,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 3,
+        "seconds": 76,
+        "power": 25,
+        "gained": 8,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 4,
+        "seconds": 85.5,
+        "power": 33,
+        "gained": 8,
+        "lost": 0,
+        "peakAlive": 9
+      },
+      {
+        "stage": 5,
+        "seconds": 85.5,
+        "power": 39,
+        "gained": 6,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 6,
+        "seconds": 80.3,
+        "power": 50,
+        "gained": 11,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 7,
+        "seconds": 86.8,
+        "power": 62,
+        "gained": 12,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 8,
+        "seconds": 92.4,
+        "power": 73,
+        "gained": 11,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 9,
+        "seconds": 94.1,
+        "power": 82,
+        "gained": 9,
+        "lost": 0,
+        "peakAlive": 14
+      },
+      {
+        "stage": 10,
+        "seconds": 112.4,
+        "power": 94,
+        "gained": 12,
+        "lost": 0,
+        "peakAlive": 11
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 17,
+    "policy": "damage",
+    "outcome": "victory",
+    "stage": 10,
+    "power": 74,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63,
+        "power": 10,
+        "gained": 5,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 2,
+        "seconds": 69.8,
+        "power": 13,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 7
+      },
+      {
+        "stage": 3,
+        "seconds": 75.9,
+        "power": 13,
+        "gained": 0,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 4,
+        "seconds": 79,
+        "power": 16,
+        "gained": 3,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 5,
+        "seconds": 82.8,
+        "power": 23,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 6,
+        "seconds": 78.9,
+        "power": 28,
+        "gained": 5,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 7,
+        "seconds": 82.7,
+        "power": 37,
+        "gained": 9,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 8,
+        "seconds": 88.6,
+        "power": 49,
+        "gained": 12,
+        "lost": 0,
+        "peakAlive": 9
+      },
+      {
+        "stage": 9,
+        "seconds": 94,
+        "power": 59,
+        "gained": 10,
+        "lost": 0,
+        "peakAlive": 9
+      },
+      {
+        "stage": 10,
+        "seconds": 98.5,
+        "power": 72,
+        "gained": 13,
+        "lost": 0,
+        "peakAlive": 9
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 17,
+    "policy": "idle",
+    "outcome": "defeat",
+    "stage": 1,
+    "power": 0,
+    "stages": [],
+    "exhausted": 0
+  },
+  {
+    "seed": 29,
+    "policy": "squad",
+    "outcome": "victory",
+    "stage": 10,
+    "power": 94,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63,
+        "power": 9,
+        "gained": 4,
+        "lost": 0,
+        "peakAlive": 3
+      },
+      {
+        "stage": 2,
+        "seconds": 69.5,
+        "power": 16,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 3,
+        "seconds": 74.9,
+        "power": 25,
+        "gained": 9,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 4,
+        "seconds": 79,
+        "power": 31,
+        "gained": 6,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 5,
+        "seconds": 87.7,
+        "power": 42,
+        "gained": 11,
+        "lost": 0,
+        "peakAlive": 7
+      },
+      {
+        "stage": 6,
+        "seconds": 79.5,
+        "power": 52,
+        "gained": 10,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 7,
+        "seconds": 85.6,
+        "power": 64,
+        "gained": 12,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 8,
+        "seconds": 89.3,
+        "power": 75,
+        "gained": 11,
+        "lost": 0,
+        "peakAlive": 10
+      },
+      {
+        "stage": 9,
+        "seconds": 95.2,
+        "power": 84,
+        "gained": 9,
+        "lost": 0,
+        "peakAlive": 9
+      },
+      {
+        "stage": 10,
+        "seconds": 109.2,
+        "power": 94,
+        "gained": 10,
+        "lost": 0,
+        "peakAlive": 11
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 29,
+    "policy": "damage",
+    "outcome": "victory",
+    "stage": 10,
+    "power": 75,
+    "stages": [
+      {
+        "stage": 1,
+        "seconds": 63,
+        "power": 9,
+        "gained": 4,
+        "lost": 0,
+        "peakAlive": 3
+      },
+      {
+        "stage": 2,
+        "seconds": 67.9,
+        "power": 9,
+        "gained": 0,
+        "lost": 0,
+        "peakAlive": 6
+      },
+      {
+        "stage": 3,
+        "seconds": 73.5,
+        "power": 11,
+        "gained": 2,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 4,
+        "seconds": 78.9,
+        "power": 12,
+        "gained": 1,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 5,
+        "seconds": 87.3,
+        "power": 21,
+        "gained": 9,
+        "lost": 0,
+        "peakAlive": 5
+      },
+      {
+        "stage": 6,
+        "seconds": 79.3,
+        "power": 28,
+        "gained": 7,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 7,
+        "seconds": 83.4,
+        "power": 41,
+        "gained": 13,
+        "lost": 0,
+        "peakAlive": 8
+      },
+      {
+        "stage": 8,
+        "seconds": 87.8,
+        "power": 52,
+        "gained": 11,
+        "lost": 0,
+        "peakAlive": 7
+      },
+      {
+        "stage": 9,
+        "seconds": 94.7,
+        "power": 63,
+        "gained": 11,
+        "lost": 0,
+        "peakAlive": 10
+      },
+      {
+        "stage": 10,
+        "seconds": 100.4,
+        "power": 75,
+        "gained": 12,
+        "lost": 0,
+        "peakAlive": 8
+      }
+    ],
+    "exhausted": 0
+  },
+  {
+    "seed": 29,
+    "policy": "idle",
+    "outcome": "defeat",
+    "stage": 1,
+    "power": 0,
+    "stages": [],
+    "exhausted": 0
+  }
+]

@@ -109,10 +109,10 @@ const scenarios: Scenario[] = [
   { name: '23-boss-far-entry-final', seconds: 1.0, debug: true, setup: (g) => { g.scripted = true; g.setSquadPower(200); g.devJumpToStage(10); g.spawnBoss(); g.setInputX(-0.7); } },
   { name: '23-boss-mid-approach', seconds: 5.0, debug: true, setup: (g) => { g.scripted = true; g.setSquadPower(60); g.devJumpToStage(5); g.spawnBoss(); g.setInputX(-0.7); } },
   // Squad Power representation ladder: 5 / 9 / 10 / 13 / 100 / 499 / 500.
-  ...[5, 9, 10, 13, 100, 499, 500].map((power) => ({
+  ...[5, 9, 10, 13, 19, 20, 29, 100, 499, 500].map((power) => ({
     name: `24-power-${String(power).padStart(3, '0')}`,
     seconds: 2.6,
-    debug: power >= 10 && power < 100,
+    debug: false,
     setup: (g: Game) => {
       g.scripted = true;
       g.setSquadPower(power);
@@ -255,6 +255,7 @@ function main() {
   if (!surface) throw new Error('Could not create CPU surface');
 
   for (const sc of scenarios) {
+    if (process.env.SCENE_FILTER && !sc.name.includes(process.env.SCENE_FILTER)) continue;
     const game = new Game({ seed: 42, width: W, height: H });
     sc.setup?.(game);
     const frames = Math.round(sc.seconds * 60);

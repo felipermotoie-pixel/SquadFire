@@ -2,10 +2,10 @@
  * Central balance configuration. Every squad-wide modifier lives here so scaling
  * can be reasoned about in one place.
  *
- * Total DPS ≈ aliveSoldiers × weapon.damage × damageMultiplier × weapon.fireRate × fireRateMultiplier × hitEfficiency
+ * Total DPS ≈ squadPower × weapon.damage × damageMultiplier × weapon.fireRate × fireRateMultiplier × hitEfficiency
  *
- * Squad size is applied exactly once (as the number of firing sources). Damage per
- * projectile and fire rate are weapon-based and only change through explicit gates.
+ * Represented power is applied exactly once, to each visible soldier's firing rate.
+ * Damage per projectile remains weapon-based, with explicit gate modifiers.
  */
 import type { Vec2, WeaponDefinition, WeaponId } from './types';
 
@@ -67,13 +67,13 @@ export const MAX_SQUAD_POWER = 500;
 export const POWER_PER_UNIT = 10;
 
 export const SQUAD = {
-  /** Initial Squad Power of a fresh run (5 power = 5 normal soldiers). */
-  initialSize: 5,
+  /** Initial Squad Power of a fresh run (one normal soldier). */
+  initialSize: 1,
   /**
    * Maximum number of VISIBLE soldiers (firing sources, formation slots, muzzles,
    * projectile-pool sizing). Never the power cap — that is MAX_SQUAD_POWER.
    */
-  maxSize: 50,
+  maxSize: 58, // 499 power = 49 P10 + 9 normal soldiers (largest visible roster).
   /** How fast a soldier converges to its formation slot (1/s). */
   slotFollow: 9,
   /** How fast the anchor follows the finger (1/s). */
@@ -102,7 +102,7 @@ export const SQUAD = {
   /** Row pitch along ROAD_FORWARD for small squads (world units). */
   formationLongitudinalSpacing: 0.12,
   /** Row pitch floor used when a deep block is compressed. */
-  formationMinLongitudinalSpacing: 0.08,
+  formationMinLongitudinalSpacing: 0.065,
   /**
    * Outer *centre-to-centre* span the block may never exceed (outermost soldier
    * centres, not rendered edges). 0.6 / 0.15 = 4 gaps → exactly 5 columns; the column
@@ -110,9 +110,8 @@ export const SQUAD = {
    */
   formationMaxWidth: 0.6,
   /**
-   * Hard cap on columns; extra soldiers add rows behind instead of width. Fixed at 5
-   * for v0.3.6: 50 soldiers = 5 × 10 rows → 9 gaps × 0.08 = 0.72 = formationMaxDepth.
-   * Four columns (13 rows, 0.96 deep) would not fit the vertical budget.
+   * Hard cap on columns; extra soldiers add rows behind instead of width.
+   * 58 soldiers use 12 rows, with compressed spacing to retain the 0.72 depth budget.
    */
   formationMaxColumns: 5,
   /**
@@ -210,7 +209,10 @@ export const BOSS = {
 
 export const GATES = {
   firstAt: 9,
-  interval: 12,
+  interval: 18,
+  squadGains: [1, 2, 3] as const,
+  fireRateMultiplier: 1.15,
+  damageMultipliers: [1.2, 1.3] as const,
   speed: 0.55,
   spawnY: ROAD_LENGTH - 0.6,
   /** Gate frame world height. */

@@ -123,8 +123,18 @@ function noticeFor(e: GameEvent): Notice | null {
   return { id: Math.random(), text: e.message, tone };
 }
 
+const WEB_PHONE_ASPECT = 9 / 19.5;
+const WEB_PHONE_MAX_WIDTH = 430;
+
+function gameViewport(windowWidth: number, windowHeight: number): { width: number; height: number } {
+  if (Platform.OS !== 'web') return { width: windowWidth, height: windowHeight };
+  const width = Math.max(320, Math.min(windowWidth, WEB_PHONE_MAX_WIDTH, windowHeight * WEB_PHONE_ASPECT));
+  return { width, height: Math.min(windowHeight, width / WEB_PHONE_ASPECT) };
+}
+
 export function GameScreen({ planetId = DEFAULT_PLANET_ID, onStageCleared, onPlanetComplete, onExit, onResetProgress }: GameScreenProps) {
-  const { width, height } = useWindowDimensions();
+  const windowSize = useWindowDimensions();
+  const { width, height } = useMemo(() => gameViewport(windowSize.width, windowSize.height), [windowSize.width, windowSize.height]);
   const insets = useSafeAreaInsets();
   const [seed, setSeed] = useState(1);
   // One Game per run: every run (and every RETRY) starts the planet at Stage 1 with
@@ -240,9 +250,11 @@ export function GameScreen({ planetId = DEFAULT_PLANET_ID, onStageCleared, onPla
   const showDefeat = hud.phase === 'defeat';
   const showVictory = hud.phase === 'victory';
   const bossName = hud.bossName;
+  const gameSurfaceStyle = Platform.OS === 'web' ? [styles.webGameSurface, { width, height }] : styles.nativeGameSurface;
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, Platform.OS === 'web' && styles.webRoot]}>
+      <View style={gameSurfaceStyle}>
       <StatusBar style="light" />
       <Battlefield game={game} width={width} height={height} debug={debug} onSync={onSync} />
       <View style={StyleSheet.absoluteFill} {...pan.panHandlers} />
@@ -396,6 +408,7 @@ export function GameScreen({ planetId = DEFAULT_PLANET_ID, onStageCleared, onPla
           bottom={insets.bottom}
         />
       )}
+      </View>
     </View>
   );
 }
@@ -621,6 +634,20 @@ function DevPanel({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a4f7c' },
+  webRoot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#03111f',
+  },
+  nativeGameSurface: { flex: 1, backgroundColor: '#0a4f7c' },
+  webGameSurface: {
+    overflow: 'hidden',
+    backgroundColor: '#0a4f7c',
+    shadowColor: '#000',
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+  },
   topBar: {
     position: 'absolute',
     left: 0,

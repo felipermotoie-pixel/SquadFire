@@ -1,7 +1,7 @@
 # SquadFire — Firing System (straight fire)
 
 ## Invariants
-1. **One soldier = one muzzle = one ShotEvent = one projectile.** The squad's output is the sum of its *visible* soldiers; there is no squad-level volley. Since v0.4.0 a soldier carries `representedPower` (1..10) and its bullet deals `damage × mods.damage × representedPower` — cadence is never scaled (`SQUAD_STACKING.md`).
+1. **Each shot = one muzzle = one ShotEvent = one projectile.** Each visible soldier carries `representedPower` (1 or 10). Its cadence is `fireRate × mods.fireRate × representedPower`; each bullet deals `damage × mods.damage`. A red P10 fires ten times as often and delivers the combined theoretical DPS of ten normal soldiers (`SQUAD_STACKING.md`, updated 2026-09-15).
 2. **Straight fire.** Every projectile leaves its own muzzle along `ROAD_FORWARD` (`game/balance.ts`: `(0, 1)` in world space, i.e. toward the vanishing point). Nothing in the simulation looks up, tracks, leads, or steers toward a target. `WEAPONS.rifle.aimMode = 'STRAIGHT'` is the only aim mode; `spread` (0 for the rifle) is the only allowed deviation and it is random, never target-seeking.
 3. **The player aims by moving the squad.** Dragging moves the anchor; the formation follows; the fire lanes move with it. There is no aim assist, no magnetism, no cone, no "closest enemy".
 4. **Collision-only damage.** A projectile damages the first enemy (or the boss) whose hitbox it physically crosses. Missed bullets keep flying until they reach `camera.farVisibleDepth` (their travel budget, see below) or exit the road sideways (`±PROJECTILES.sideExit`); lifetime is only a backstop (flight time × 1.15).
@@ -10,7 +10,7 @@
 ## Per-soldier state
 `nextShotAt`, `firePhase`, `recoil`, `shotsFired`. There is no aim angle, target id, or reservation on soldiers, enemies, or the boss.
 
-- New soldiers get `firePhase = (index × 0.618…) mod 1` and `nextShotAt = now + phase × period`. Existing soldiers keep their timers when power changes (a consolidation 9 → 10 keeps the front soldier and its phase), so a +3 gate adds streams within one period and never produces a synchronized volley (Test D).
+- New soldiers get `firePhase = (index × 0.618…) mod 1` and `nextShotAt = now + phase × effectivePeriod`. Existing timers stay unchanged when represented power is unchanged. On merge/split, the remaining time scales by old power / new power to preserve progress through the firing cycle.
 - Soldiers fire continuously — there is no idle state waiting for a target and no timer re-phasing.
 - After a shot: `nextShotAt = max(prev + period, now + period / 2)`.
 - `period = 1 / (weapon.fireRate × mods.fireRate)`. Fire-rate gates shorten every soldier's period from its *next* shot, phases preserved.

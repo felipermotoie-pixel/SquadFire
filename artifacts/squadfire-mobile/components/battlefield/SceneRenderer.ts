@@ -123,6 +123,13 @@ export class SceneRenderer {
   private enrageTint: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(255,60,30,0.22)'), BlendMode.SrcATop);
   private spawnTint: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(140,240,255,0.7)'), BlendMode.SrcATop);
   private lostTint: SkColorFilter = Skia.ColorFilter.MakeBlend(Skia.Color('rgba(255,255,255,0.6)'), BlendMode.SrcATop);
+  /** Recolour blue armour and cyan lights red, preserving texture and alpha. */
+  private power10Tint: SkColorFilter = Skia.ColorFilter.MakeMatrix([
+    0, 0, 1, 0, 0,
+    0, 0.35, 0, 0, 0,
+    0.4, 0, 0, 0, 0,
+    0, 0, 0, 1, 0,
+  ]);
 
   private unitGlow: SkShader = Skia.Shader.MakeRadialGradient(
     Skia.Point(0, 0),
@@ -253,7 +260,7 @@ export class SceneRenderer {
     this.roadFadeShader?.dispose();
     this.skyShader = this.glitterShader = this.roadFadeShader = null;
     for (const o of [this.unitGlow, this.softGlow, this.threatMarker, this.roadGrain, this.waterNoise, this.glitterNoise]) o.dispose();
-    for (const f of [this.whiteFlash, this.bossFlash, this.orangeFlash, this.eliteTint, this.runnerTint, this.enrageTint, this.spawnTint, this.lostTint]) f.dispose();
+    for (const f of [this.whiteFlash, this.bossFlash, this.orangeFlash, this.eliteTint, this.runnerTint, this.enrageTint, this.spawnTint, this.lostTint, this.power10Tint]) f.dispose();
     for (const pt of [
       this.paint, this.stroke, this.glowPaint, this.shadowPaint, this.spritePaint, this.flashPaint, this.hazePaint,
       this.textPaint, this.textShadowPaint, this.tracerCore, this.tracerGlow, this.tracerCoreFar, this.tracerGlowFar,
@@ -860,15 +867,14 @@ export class SceneRenderer {
     const bob = -Math.abs(run) * 0.028 * frame.unit;
     // Run cycle = bob + squash only. No sway: the body (and the barrel) never leaves
     // ROAD_FORWARD while alive, so the drawn muzzle matches the simulated one.
-    // Consolidated soldiers (representedPower > 1) read as a heavier unit: up to +12 %
-    // scale at P10 plus a cyan core glow. Same sprite, same muzzle — the muzzle offset
+    // Full P10 soldiers use red armour and +12 % scale. Same sprite, same muzzle — the muzzle offset
     // is inside the hit radius so the drawn barrel still matches the simulated lane.
-    const buff = s.representedPower > 1 ? s.representedPower / POWER_PER_UNIT : 0;
+    const buff = s.representedPower === POWER_PER_UNIT ? 1 : 0;
     const buffScale = 1 + 0.12 * buff;
     let sx = (1 + Math.abs(run) * 0.018) * buffScale;
     let sy = (1 - Math.abs(run) * 0.03 + s.recoil * 0.05) * buffScale;
     let alpha = 1;
-    let filter: SkColorFilter | null = null;
+    let filter: SkColorFilter | null = buff ? this.power10Tint : null;
     let extraRot = 0;
     let dropY = 0;
 
@@ -878,7 +884,7 @@ export class SceneRenderer {
       const swell = 1 + Math.sin(k * Math.PI) * 0.16;
       sx *= swell;
       sy *= swell;
-      if (k > 0.5) filter = this.spawnTint;
+      if (k > 0.5) filter = buff ? this.power10Tint : this.spawnTint;
     }
 
     if (s.age < 0.45) {
@@ -890,7 +896,7 @@ export class SceneRenderer {
       sy *= ease * overshoot;
       alpha = Math.min(1, k * 2);
       dropY = -(1 - ease) * frame.height * 0.6;
-      if (k < 0.5) filter = this.spawnTint;
+      if (k < 0.5) filter = buff ? this.power10Tint : this.spawnTint;
     }
     if (s.death > 0) {
       const d = s.death;
@@ -914,7 +920,7 @@ export class SceneRenderer {
       canvas.drawCircle(0, 0, 1, g);
       canvas.restore();
       if (buff > 0) {
-        // Cyan core: a compact glow at chest height marks the unit as consolidated power.
+        // Compact light behind the red armour marks the consolidated unit.
         canvas.save();
         canvas.translate(frame.pivotX, frame.pivotY + bob + recoilY - frame.height * 0.12);
         canvas.scale(frame.width * 0.55 * buffScale, frame.height * 0.28 * buffScale);
@@ -926,7 +932,7 @@ export class SceneRenderer {
       g.setAlphaf(1);
     }
 
-    this.drawSprite(canvas, this.assets.soldier, frame, rotation + extraRot, sx, sy, bob + recoilY + dropY, alpha, filter, '#2a7fe0');
+    this.drawSprite(canvas, this.assets.soldier, frame, rotation + extraRot, sx, sy, bob + recoilY + dropY, alpha, filter, buff ? '#e53935' : '#2a7fe0');
   }
 
   private drawEnemy(canvas: SkCanvas, game: Game, e: Enemy, t: number): void {
@@ -1783,4 +1789,3 @@ function seeded(n: number): number {
   const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
   return x - Math.floor(x);
 }
-

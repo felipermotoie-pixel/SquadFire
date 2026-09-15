@@ -5,14 +5,12 @@
  * with 10:1 compression:
  *
  *   power  1..9   → one normal soldier per power point (keeps the v0.3.6 opening)
- *   power ≥ 10    → floor(power / 10) "Power10" soldiers + at most ONE partial soldier
- *                   whose representedPower is the remainder
+ *   power ≥ 10    → floor(power / 10) "Power10" soldiers + power % 10 normal soldiers
  *
- *   5 → 5 normals · 9 → 9 normals · 10 → 1×P10 · 13 → P10 + P3 · 29 → 2×P10 + P9
- *   99 → 9×P10 + P9 · 100 → 10×P10 · 499 → 49×P10 + P9 (50 visible) · 500 → 50×P10
+ *   19 → P10 + 9×P1 · 29 → 2×P10 + 9×P1 · 499 → 49×P10 + 9×P1 (58 visible)
  *
- * A soldier's damage per projectile is weapon damage × modifiers × representedPower;
- * cadence never changes. Ten P1 soldiers and one P10 soldier have identical
+ * A soldier's cadence is weapon fire rate × modifiers × representedPower;
+ * each projectile keeps normal weapon damage. Ten P1 soldiers and one P10 have identical
  * theoretical DPS.
  *
  * Pure functions only — the engine's roster reconciler consumes `representationFor`.
@@ -30,12 +28,12 @@ export function visibleUnitCount(power: number): number {
   if (p < POWER_PER_UNIT) return p;
   const full = Math.floor(p / POWER_PER_UNIT);
   const rem = p % POWER_PER_UNIT;
-  return full + (rem > 0 ? 1 : 0);
+  return full + rem;
 }
 
 /**
  * Represented power of each visible soldier, in deterministic visual order: full
- * units first, the single partial (if any) last. Sums to `power`.
+ * units first, then individual normal soldiers. Sums to `power`.
  */
 export function representationFor(power: number): number[] {
   const p = clampSquadPower(power);
@@ -48,7 +46,7 @@ export function representationFor(power: number): number[] {
   const full = Math.floor(p / POWER_PER_UNIT);
   const rem = p % POWER_PER_UNIT;
   for (let i = 0; i < full; i++) out.push(POWER_PER_UNIT);
-  if (rem > 0) out.push(rem);
+  for (let i = 0; i < rem; i++) out.push(1);
   return out;
 }
 
@@ -56,9 +54,7 @@ export function representationFor(power: number): number[] {
 export interface PowerDistribution {
   visible: number;
   power10Units: number;
-  /** representedPower of the single partial unit (0 = none). */
-  partialPower: number;
-  /** Normal (P1) soldiers, only non-zero below POWER_PER_UNIT. */
+  /** Normal (P1) soldiers left after forming complete groups of ten. */
   normalUnits: number;
 }
 
@@ -66,14 +62,12 @@ export function powerDistribution(power: number): PowerDistribution {
   const p = clampSquadPower(power);
   const rep = representationFor(p);
   let power10Units = 0;
-  let partialPower = 0;
   let normalUnits = 0;
   for (const r of rep) {
     if (r === POWER_PER_UNIT) power10Units++;
-    else if (p < POWER_PER_UNIT) normalUnits++;
-    else partialPower = r;
+    else normalUnits++;
   }
-  return { visible: rep.length, power10Units, partialPower, normalUnits };
+  return { visible: rep.length, power10Units, normalUnits };
 }
 
 /** Compile-time-ish guard: the representation can never exceed the visible cap. */

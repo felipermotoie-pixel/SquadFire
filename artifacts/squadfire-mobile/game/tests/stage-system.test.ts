@@ -88,8 +88,8 @@ const types = (t: Trace, stage?: number) => t.events.filter((e) => stage === und
   const monotonic = (a: number[]) => a.every((v, i) => i === 0 || v >= a[i - 1]);
   const bosses = EARTH_STAGES.map((s, i) => (s.boss ? `${i + 1}:${s.boss.type}` : null)).filter(Boolean);
   check(
-    'Earth: 10 stages, counts 36→120, HP 20→120, windows 60→90 s, sub-boss at 5, final at 10, no reward multiplier',
-    err === '' && EARTH.stages.length === 10 && counts[0] === 36 && counts[9] === 120 && hp[0] === 20 && hp[9] === 120 && windows[0] === 60 && windows[9] === 90 && monotonic(counts) && monotonic(hp) && monotonic(windows) && bosses.join(',') === '5:sub,10:final' && !('rewardMultiplier' in EARTH_STAGES[4]) && EARTH_STAGES[0].archetypeMix.grunt === 1,
+    'Earth: 10 stages, counts 36→120, HP 20→230, windows 60→90 s, sub-boss at 5, final at 10, no reward multiplier',
+    err === '' && EARTH.stages.length === 10 && counts[0] === 36 && counts[9] === 120 && hp[0] === 20 && hp[9] === 230 && windows[0] === 60 && windows[9] === 90 && monotonic(counts) && monotonic(hp) && monotonic(windows) && monotonic(EARTH_STAGES.map((s) => s.enemySpeedMultiplier)) && bosses.join(',') === '5:sub,10:final' && !('rewardMultiplier' in EARTH_STAGES[4]) && EARTH_STAGES[0].archetypeMix.grunt === 1,
     err || `counts ${counts.join('/')}; hp ${hp.join('/')}; windows ${windows.join('/')}; bosses ${bosses.join(', ')}; final hp ${EARTH_STAGES[9].boss?.hp}`,
   );
 }
@@ -182,27 +182,28 @@ const types = (t: Trace, stage?: number) => t.events.filter((e) => stage === und
     const sum = rep.reduce((a, b) => a + b, 0);
     const full = rep.filter((r) => r === POWER_PER_UNIT).length;
     const partials = rep.filter((r) => r !== POWER_PER_UNIT);
-    const expectVisible = p < POWER_PER_UNIT ? p : Math.ceil(p / POWER_PER_UNIT);
+    const expectVisible = Math.floor(p / POWER_PER_UNIT) + p % POWER_PER_UNIT;
     const good =
       sum === p &&
       rep.length === visibleUnitCount(p) &&
       rep.length === expectVisible &&
       rep.length <= SQUAD.maxSize &&
-      (p < POWER_PER_UNIT ? rep.every((r) => r === 1) : partials.length <= 1 && full === Math.floor(p / POWER_PER_UNIT) && (partials.length === 0 || rep[rep.length - 1] === partials[0])) &&
-      rep.every((r) => r >= 1 && r <= POWER_PER_UNIT);
+      full === Math.floor(p / POWER_PER_UNIT) && partials.length === p % POWER_PER_UNIT &&
+      rep.slice(0, full).every((r) => r === POWER_PER_UNIT) &&
+      rep.slice(full).every((r) => r === 1);
     if (!good) {
       ok = false;
       if (bad.length < 5) bad.push(`${p}→[${rep.join(',')}]`);
     }
   }
   check(
-    'Squad Power: every power 0..500 sums exactly, ≤ 50 visible, full units first, single partial last, <10 = all P1',
+    'Squad Power: every power 0..500 sums exactly, ≤ 58 visible, full P10 units then individual P1 remainders',
     ok,
     err || (bad.length ? bad.join(' ') : `5→${representationFor(5).length} visible, 9→${representationFor(9).length}, 10→${representationFor(10).join('')}, 13→${representationFor(13).join(',')}, 499→${representationFor(499).length} visible, 500→${representationFor(500).length}`),
   );
 }
 
-// Engine mirrors the representation and damage scales with representedPower ----------
+// Engine mirrors the representation and cadence scales with representedPower ----------
 {
   const g = new Game({ seed: 1, initialSquadPower: 5 });
   g.scripted = true;
@@ -214,7 +215,7 @@ const types = (t: Trace, stage?: number) => t.events.filter((e) => stage === und
   const v10 = g.visibleSquadCount;
   const p10 = g.soldiers.find((s) => s.alive && s.death === 0)!;
   const keptFront = ids9[0] === p10.id;
-  g.addSquadPower(3, false); // 13 → P10 + P3
+  g.addSquadPower(3, false); // 13 → P10 + 3 P1
   const rep13 = g.soldiers.filter((s) => s.alive && s.death === 0).map((s) => s.representedPower);
   g.setSquadPower(500);
   const v500 = g.visibleSquadCount;
@@ -230,8 +231,8 @@ const types = (t: Trace, stage?: number) => t.events.filter((e) => stage === und
     for (const p of g.projectiles) if (p.active) dmg = Math.max(dmg, p.damage);
   }
   check(
-    'Squad Power ↔ roster: 5→5, 9→9, 10→1×P10 (front soldier kept), 13→P10+P3, 500→50 visible, cap rejects, 499→49×P10+P9, P10 bullet = 10× damage',
-    v5 === 5 && v9 === 9 && v10 === 1 && keptFront && p10.representedPower === 10 && rep13.join(',') === '10,3' && v500 === 50 && applied === 0 && g.squadPower === 10 && rep499.length === 50 && rep499[49] === 9 && rep499.slice(0, 49).every((r) => r === 10) && Math.abs(dmg - 10 * 10) < 1e-9 && !g.progressEligible,
+    'Squad Power ↔ roster: 9→10 keeps front, 13→P10+3 P1, 500→50 P10, cap rejects, 499→49 P10+9 P1; P10 fires normal-damage bullets at 10× cadence',
+    v5 === 5 && v9 === 9 && v10 === 1 && keptFront && p10.representedPower === 10 && rep13.join(',') === '10,1,1,1' && v500 === 50 && applied === 0 && g.squadPower === 10 && rep499.length === 58 && rep499.slice(49).every((r) => r === 1) && rep499.slice(0, 49).every((r) => r === 10) && Math.abs(dmg - 10) < 1e-9 && shots.length >= 19 && shots.length <= 21 && !g.progressEligible,
     `visible 5/${v5} 9/${v9} 10/${v10} 500/${v500}; 13 → [${rep13.join(',')}]; +10 at cap applied ${applied}; 499 tail ${rep499[49]}; P10 damage ${dmg}`,
   );
 }

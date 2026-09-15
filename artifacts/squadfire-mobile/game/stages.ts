@@ -87,7 +87,7 @@ export const STAGES = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Earth — authoritative balance table (v0.4.0 measurement baseline).
+// Earth — revised 2026-09-15; see docs/reports/OPENING_BALANCE_2026-09-15.md.
 // Do not retune silently: every change here must come with new measurements.
 // ---------------------------------------------------------------------------
 
@@ -102,29 +102,29 @@ interface EarthRow {
 }
 
 const EARTH_ROWS: EarthRow[] = [
-  { count: 36, hp: 20, window: 60, group: [2, 3], speed: 1.0, mix: { grunt: 1, runner: 0, elite: 0 } },
-  { count: 44, hp: 30, window: 65, group: [2, 4], speed: 1.02, mix: { grunt: 0.86, runner: 0.14, elite: 0 } },
-  { count: 52, hp: 40, window: 70, group: [3, 4], speed: 1.04, mix: { grunt: 0.8, runner: 0.16, elite: 0.04 } },
-  { count: 60, hp: 50, window: 75, group: [3, 5], speed: 1.06, mix: { grunt: 0.76, runner: 0.18, elite: 0.06 } },
+  { count: 36, hp: 20, window: 60, group: [2, 3], speed: 1.15, mix: { grunt: 1, runner: 0, elite: 0 } },
+  { count: 44, hp: 45, window: 65, group: [2, 4], speed: 1.4, mix: { grunt: 0.86, runner: 0.14, elite: 0 } },
+  { count: 52, hp: 75, window: 70, group: [3, 4], speed: 1.65, mix: { grunt: 0.8, runner: 0.16, elite: 0.04 } },
+  { count: 60, hp: 95, window: 75, group: [3, 5], speed: 1.75, mix: { grunt: 0.76, runner: 0.18, elite: 0.06 } },
   {
     count: 60,
-    hp: 50,
+    hp: 110,
     window: 75,
     group: [3, 5],
-    speed: 1.07,
+    speed: 1.8,
     mix: { grunt: 0.74, runner: 0.18, elite: 0.08 },
     boss: { type: 'sub', hp: 4500, approachDurationTargetSec: 10, attackIntervalMultiplier: 1.0, escortSize: 0, escortInterval: 0 },
   },
-  { count: 72, hp: 60, window: 75, group: [4, 5], speed: 1.08, mix: { grunt: 0.72, runner: 0.2, elite: 0.08 } },
-  { count: 84, hp: 70, window: 80, group: [4, 6], speed: 1.1, mix: { grunt: 0.7, runner: 0.2, elite: 0.1 } },
-  { count: 96, hp: 80, window: 85, group: [4, 7], speed: 1.12, mix: { grunt: 0.68, runner: 0.22, elite: 0.1 } },
-  { count: 108, hp: 100, window: 90, group: [5, 7], speed: 1.14, mix: { grunt: 0.66, runner: 0.22, elite: 0.12 } },
+  { count: 72, hp: 130, window: 75, group: [4, 5], speed: 1.85, mix: { grunt: 0.72, runner: 0.2, elite: 0.08 } },
+  { count: 84, hp: 150, window: 80, group: [4, 6], speed: 1.9, mix: { grunt: 0.7, runner: 0.2, elite: 0.1 } },
+  { count: 96, hp: 175, window: 85, group: [4, 7], speed: 1.95, mix: { grunt: 0.68, runner: 0.22, elite: 0.1 } },
+  { count: 108, hp: 200, window: 90, group: [5, 7], speed: 2.0, mix: { grunt: 0.66, runner: 0.22, elite: 0.12 } },
   {
     count: 120,
-    hp: 120,
+    hp: 230,
     window: 90,
     group: [5, 8],
-    speed: 1.15,
+    speed: 2.05,
     mix: { grunt: 0.64, runner: 0.24, elite: 0.12 },
     boss: { type: 'final', hp: 18000, approachDurationTargetSec: 10, attackIntervalMultiplier: 0.85, escortSize: 0, escortInterval: 0 },
   },

@@ -12,9 +12,10 @@
  * Squad Power vs visible squad (v0.4.0):
  *   `squadPower` (0..MAX_SQUAD_POWER) is the canonical strength. The soldiers on the
  *   road are a compressed representation of it (game/squad-power.ts): each soldier
- *   carries `representedPower` and its projectiles deal weapon damage × modifiers ×
- *   representedPower. Formation, clamp, cadence, muzzles and pools only ever see the
- *   visible count (≤ SQUAD.maxSize). `syncRosterToPower()` is the single reconciler.
+ *   carries `representedPower` and fires at weapon cadence × modifiers × representedPower.
+ *   Each bullet deals normal weapon damage × damage modifier. Formation and muzzles
+ *   use the visible count (≤ SQUAD.maxSize); pools budget the amplified cadence.
+ *   `syncRosterToPower()` is the single reconciler.
  *
  * Planet / stage progression:
  *   The engine plays one `PlanetConfig` (game/planets.ts). Each stage builds a
@@ -22,7 +23,7 @@
  *   every scheduled regular has spawned and died (and the boss, if any, is dead).
  *   Completing the planet's last stage ends the run in the terminal `victory` phase.
  */
-import { BOSS, ENEMIES, FAR_SPAWN, GATES, MAX_SQUAD_POWER, MODIFIER_CAPS, PROJECTILES, ROAD_FORWARD, SIM, SQUAD, VFX, WEAPONS, forwardDepth } from './balance';
+import { BOSS, ENEMIES, FAR_SPAWN, GATES, MAX_SQUAD_POWER, MODIFIER_CAPS, POWER_PER_UNIT, PROJECTILES, ROAD_FORWARD, SIM, SQUAD, VFX, WEAPONS, forwardDepth } from './balance';
 import { createCamera, project, type CameraLayout } from './camera';
 import { anchorLimitFor, formationLayout, formationSlots } from './formation';
 import { isLastStage, planetById, planetStage, type PlanetConfig } from './planets';
@@ -70,7 +71,7 @@ const MAX_CONSOLIDATE_VFX = 4;
  * Projectile pool the camera needs so no live bullet is ever recycled. Discrete
  * shots, not a rate × time approximation: the rearmost muzzle has the longest flight
  * (farVisibleDepth − rear muzzle depth) at the fastest allowed cadence. Sized from the
- * VISIBLE cap (SQUAD.maxSize), never from Squad Power.
+ * visible cap at P10 cadence (a conservative upper bound, including roster changes).
  */
 export function projectilePoolRequirement(cam: CameraLayout): {
   maxFlightTime: number;
@@ -81,7 +82,7 @@ export function projectilePoolRequirement(cam: CameraLayout): {
   const weapon = WEAPONS.rifle;
   const rearMuzzleDepth = formationLayout(SQUAD.maxSize).rearY + PLAYER_SOLDIER_VISUAL.muzzleForwardOffset;
   const maxFlightTime = (cam.farVisibleDepth - rearMuzzleDepth) / weapon.projectileSpeed;
-  const maxEffectiveFireRate = weapon.fireRate * MODIFIER_CAPS.fireRateMax;
+  const maxEffectiveFireRate = weapon.fireRate * MODIFIER_CAPS.fireRateMax * POWER_PER_UNIT;
   const maxShotsInFlightPerSoldier = Math.ceil(maxEffectiveFireRate * maxFlightTime) + 1;
   const theoreticalMaxActive = SQUAD.maxSize * maxShotsInFlightPerSoldier;
   const requiredPool = Math.ceil(theoreticalMaxActive * PROJECTILES.poolSafetyFactor);
@@ -92,7 +93,7 @@ export interface GameOptions {
   seed?: number;
   /** Planet to play. Default: Earth. */
   planetId?: string;
-  /** Initial Squad Power (default SQUAD.initialSize = 5). */
+  /** Initial Squad Power (default SQUAD.initialSize = 1). */
   initialSquadPower?: number;
   /** Stage the run starts at. Default 1. Clamped to the planet's length. */
   startStage?: number;
@@ -431,7 +432,7 @@ export class Game {
    *   - too many soldiers → the rearmost are removed ('loss' plays the death
    *     animation; 'gain'/'preset' consolidate instantly with a cyan pulse);
    *   - too few → new soldiers join behind the block with evenly filled fire phases;
-   *   - representedPower is then assigned by index (full units first, partial last).
+   *   - representedPower is then assigned by index (full units first, normals last).
    * Slots are reassigned and the anchor clamped in the same frame whenever the visible
    * count changes. Called only when power changes — never per frame.
    */
@@ -485,7 +486,7 @@ export class Game {
           alive: true,
           pos: { x: this.anchorX + (this.rng() - 0.5) * 0.3, y: -0.9 - this.rng() * 0.3 },
           slot: { x: 0, y: 0 },
-          nextShotAt: this.time + firePhase * period,
+          nextShotAt: this.time + firePhase * period / target[index],
           firePhase,
           weaponId: 'rifle',
           animPhase: this.rng() * Math.PI * 2,
@@ -504,6 +505,8 @@ export class Game {
     for (let i = 0; i < alive.length; i++) {
       const s = alive[i];
       if (s.representedPower !== target[i]) {
+        // Preserve progress through the firing cycle when merging or splitting.
+        s.nextShotAt = this.time + Math.max(0, s.nextShotAt - this.time) * s.representedPower / target[i];
         s.representedPower = target[i];
         s.transformPulse = TRANSFORM_PULSE_SEC;
         if (vfxBudget > 0 && s.age > 0) {
@@ -822,9 +825,9 @@ export class Game {
    */
   private nextGatePair(): [GateEffect, GateEffect] {
     const pairs: [GateEffect, GateEffect][] = [
-      [{ kind: 'squad', amount: 3 }, { kind: 'fireRate', multiplier: 1.25 }],
-      [{ kind: 'damage', multiplier: 1.5 }, { kind: 'squad', amount: 4 }],
-      [{ kind: 'squad', amount: 5 }, { kind: 'damage', multiplier: 2 }],
+      [{ kind: 'squad', amount: GATES.squadGains[0] }, { kind: 'fireRate', multiplier: GATES.fireRateMultiplier }],
+      [{ kind: 'damage', multiplier: GATES.damageMultipliers[0] }, { kind: 'squad', amount: GATES.squadGains[1] }],
+      [{ kind: 'squad', amount: GATES.squadGains[2] }, { kind: 'damage', multiplier: GATES.damageMultipliers[1] }],
     ];
     const pair = pairs[Math.floor(this.rng() * pairs.length)];
     const room = MAX_SQUAD_POWER - this.squadPower;
@@ -832,7 +835,7 @@ export class Game {
       if (e.kind !== 'squad') return e;
       if (room >= e.amount) return e;
       if (room > 0) return { kind: 'squad', amount: room };
-      return other.kind === 'damage' ? { kind: 'fireRate', multiplier: 1.25 } : { kind: 'damage', multiplier: 1.5 };
+      return other.kind === 'damage' ? { kind: 'fireRate', multiplier: GATES.fireRateMultiplier } : { kind: 'damage', multiplier: GATES.damageMultipliers[0] };
     };
     return [fix(pair[0], pair[1]), fix(pair[1], pair[0])];
   }
@@ -944,7 +947,6 @@ export class Game {
 
   private updateSoldiers(dt: number): void {
     const weapon = WEAPONS.rifle;
-    const period = 1 / (weapon.fireRate * this.mods.fireRate);
     const canFire = this.phase === 'playing';
     let removed = false;
 
@@ -974,6 +976,7 @@ export class Game {
       // Continuous straight fire on the soldier's own timer. No target lookup, no
       // idle state: the timer never waits for an enemy and never re-phases.
       if (canFire && this.time >= s.nextShotAt) {
+        const period = 1 / (weapon.fireRate * this.mods.fireRate * s.representedPower);
         this.fireShot(s);
         // Next shot exactly one period later. Catch up at most half a period if the
         // frame was long, so cadence stays stable without bursts.
@@ -1039,9 +1042,8 @@ export class Game {
     // Travel budget to the camera's far visible depth from THIS muzzle, so front and
     // rear rows terminate at the same distant boundary. Lifetime is only a backstop.
     p.maxTravel = Math.max(0.5, this.cam.farVisibleDepth - forwardDepth(m));
-    // Damage scales with the power this soldier represents; cadence never does, so
-    // ten P1 soldiers and one P10 soldier have identical theoretical DPS.
-    p.damage = weapon.damage * this.mods.damage * s.representedPower;
+    // Power scales cadence once: P10 emits ten normal-damage shots per P1 cycle.
+    p.damage = weapon.damage * this.mods.damage;
     p.spawnTime = this.time;
     p.lifetime = (p.maxTravel / weapon.projectileSpeed) * PROJECTILES.lifetimeMargin;
 

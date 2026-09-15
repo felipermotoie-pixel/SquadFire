@@ -1,6 +1,6 @@
 # SquadFire — Project State
 
-Updated: 2026-09-11 (v0.4.0)
+Updated: 2026-09-15 (local corrections after v0.4.0)
 
 ## Version
 `v0.4.0` (committed, **not tagged**: balance gate failed → BALANCE REVIEW REQUIRED, see `docs/reports/EARTH_BALANCE_v0.4.0.md`) — Earth planet with 10 fixed stages, far spawns, Squad Power 500 with 10:1 stacking. History: `pre-v0.4.0` checkpoint (= `v0.3.6`), `v0.3.6` projectile range / ultra-compact formation / tracer look, `v0.3.5` long-range visual upgrade, `pre-v0.3.6` checkpoint, `v0.3.4` stage-based progression, `pre-visual-upgrade` checkpoint, `v0.3.3` review fix (ranks close the frame a soldier is lost), `pre-stage-system` checkpoint, `v0.3.0` straight-fire rework, `v0.3.1` review fixes, `v0.3.2` projectile-perspective audit + compact formation + whole-formation road clamp. Previous states tagged `pre-straight-fire` (= `v0.2.0`) and `pre-high-fidelity-visual-rework`.
@@ -8,8 +8,8 @@ Updated: 2026-09-11 (v0.4.0)
 ## v0.4.0 — what changed
 - **Planet system:** `game/planets.ts` (Earth only), `game/stages.ts` is a fixed 10-stage table (count 36 → 120, absolute HP 20 → 120, spawn window 60 → 90 s, group size, speed, archetype mix, per-stage boss 4500 / 18 000). No generator, no boss multiplier, no reward multiplier. Stage 10 clear = terminal victory + one `planet-complete`.
 - **Spawning:** deterministic per-stage `SpawnSchedule` (exact count, groups spread over the window, last spawn at the window end), `maxAlive` defers instead of dropping. Spawn depth is camera-derived (`computeSpawnGeometry`: enemies at `farVisibleDepth − 1.4` ≈ 21.6, boss at −1.2), collision grid/haze/road fade follow it. Boss enters from the far line with a 10 s approach (`bossTiming` recorded).
-- **Squad Power:** canonical `squadPower` 0..500, visible roster derived 10:1 (`game/squad-power.ts`, `docs/SQUAD_STACKING.md`), single reconciler (`syncRosterToPower`) that also reassigns slots and clamps the anchor in the same frame; damage × `representedPower`; gates clamp/swap at caps; overkill/damageDealt/peak stats.
-- **Campaign:** schema v3 planet-keyed progress with migration from wave-era and v2 saves; `CampaignScreen` (planet card → run → summary) owns persistence; `GameScreen` only reports; `progressEligible` latches false on any dev/test hook (`DEV RUN — PROGRESS NOT SAVED`). Every run/RETRY starts at Stage 1 / power 5.
+- **Squad Power (correction 2026-09-15):** canonical `squadPower` 0..500; each full group of ten becomes one red P10, remainders remain individual blue P1 soldiers (19 = 1 P10 + 9 P1; maximum 58 visible at power 499). Single reconciler reassigns slots and clamps the anchor in the same frame. Cadence × `representedPower`, normal damage per bullet: P10 fires 20/s at base settings and delivers the combined DPS of ten normals. See `docs/SQUAD_STACKING.md` for validation; earlier balance measurements predate this change.
+- **Campaign:** schema v3 planet-keyed progress with migration from wave-era and v2 saves; `CampaignScreen` (planet card → run → summary) owns persistence; `GameScreen` only reports; `progressEligible` latches false on any dev/test hook (`DEV RUN — PROGRESS NOT SAVED`). Every run/RETRY starts at Stage 1 / power 1 (one blue soldier), per the latest user request on 2026-09-15.
 - **HUD/renderer:** `EARTH • STAGE 03/10`, `SQUAD n / 500`, boss display names, buffed P10 look (scale, glows, transform pulse), `squad-consolidate` VFX, richer debug overlay.
 - **Tooling:** `pnpm run measure:earth` (Profiles A/B/C, seeds 1337 + 5, per-stage/boss records, report + JSON), stage tests rewritten (19 checks), render harness v0.4.0 scenes (20–26).
 - **Balance result (unchanged numbers, measured):** run 13.9 min, deferred 0, peak visible ≤ 50, pool never exhausted — but both bosses die during the approach under Profile B (sub 2.1 s, final 7.8 s after spawn; supplemental seeds agree). Root cause: modifier caps ×3 × ×2.5 reached by Stage 4 and bullets that reach the spawn line. Review options in the report; no tuning done without sign-off.
@@ -76,3 +76,4 @@ Balance decision for Earth bosses, then "Intro Cinematic + Main Menu": BOOT → 
 
 ## Later candidates
 Shop/economy, campaign, more weapons/skins, enemy ranged fire, audio, on-device profiling pass.
+- **Difficulty correction, 2026-09-15:** slower upgrade growth (+1/+2/+3 soldiers, 18-second gate interval), smaller upgrade multipliers and progressive enemy HP/speed. Squad-first simulations enter Stage 3 at power 15–17 instead of 41–45. All 86 regression checks passed; six active-policy simulations completed Earth. See `docs/reports/OPENING_BALANCE_2026-09-15.md`; manual difficulty assessment remains pending.

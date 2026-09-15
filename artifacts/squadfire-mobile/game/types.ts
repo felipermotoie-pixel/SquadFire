@@ -69,8 +69,8 @@ export interface Soldier {
   age: number;
   /**
    * Squad Power this soldier represents (1 = normal soldier, POWER_PER_UNIT = fully
-   * consolidated "Power10" soldier, in between = the single partial unit). Damage per
-   * projectile scales with it; cadence does not. Set only by the roster reconciler.
+   * consolidated "Power10" soldier; there are no partial units). Cadence scales with
+   * it; damage per projectile does not. Set only by the roster reconciler.
    */
   representedPower: number;
   /** Seconds remaining of the cyan consolidation pulse after representedPower changed (visual). */

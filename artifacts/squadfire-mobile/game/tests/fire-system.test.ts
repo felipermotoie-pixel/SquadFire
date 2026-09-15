@@ -176,7 +176,7 @@ const SAFE_CENTRE = SQUAD.roadHalfWidth - SOLDIER_HALF_WIDTH - SQUAD.formationRo
   const g = makeGame(50);
   g.applyEffect({ kind: 'fireRate', multiplier: MODIFIER_CAPS.fireRateMax }); // capped at 2.5× → 5 shots/s per soldier
   run(g, req.maxFlightTime * 2.5); // all misses (no enemies); ≥ 2× the longest flight
-  const cadenceOk = approx(g.stats.shotsPerSecond, 50 * R * MODIFIER_CAPS.fireRateMax, 15);
+  const cadenceOk = approx(g.stats.shotsPerSecond, 500 * R * MODIFIER_CAPS.fireRateMax, 50);
   check(
     'Pool: 50 soldiers × capped rate × all misses — peak ≤ theoretical, no exhaustion, pool ≥ required',
     g.stats.peakActiveProjectiles <= req.theoreticalMaxActive && g.stats.projectilePoolExhausted === 0 && g.projectiles.length >= req.requiredPool && g.stats.peakActiveProjectiles > req.theoreticalMaxActive * 0.6 && cadenceOk,
@@ -615,7 +615,55 @@ for (const n of [20, 50]) {
   const byFrame = new Map<number, number>();
   for (const s of shots) byFrame.set(Math.round(s.timestamp * 120), (byFrame.get(Math.round(s.timestamp * 120)) ?? 0) + 1);
   const maxPerFrame = Math.max(...byFrame.values());
-  check('Cadence: 10 soldiers ≈ 10× rate, no frame burst', approx(shots.length, 100 * R, 10) && maxPerFrame <= 3, `${shots.length} shots in 10s, max ${maxPerFrame} per 1/120s step`);
+  check('Cadence: 10 P10 soldiers ≈ 100× base rate, staggered', approx(shots.length, 1000 * R, 10) && maxPerFrame <= 3, `${shots.length} shots in 10s, max ${maxPerFrame} per 1/120s step`);
+}
+
+// User regression: 19 power is one rapid-fire P10 and nine independent normals.
+for (const hz of [30, 60, 120]) {
+  for (const modifier of [1, MODIFIER_CAPS.fireRateMax]) {
+    const g = new Game({ seed: 19, initialSquadPower: 19 });
+    g.scripted = true;
+    g.applyEffect({ kind: 'fireRate', multiplier: modifier });
+    g.applyEffect({ kind: 'damage', multiplier: 3 });
+    run(g, 1, 1 / hz);
+    const shots = run(g, 10, 1 / hz);
+    const heavy = g.soldiers.find((s) => s.representedPower === 10)!;
+    const heavyShots = shots.filter((s) => s.soldierId === heavy.id).length;
+    const normalShots = g.soldiers.filter((s) => s.representedPower === 1).map((s) => shots.filter((e) => e.soldierId === s.id).length);
+    check(`19 power @${hz}Hz, rate ×${modifier}: 1 P10 + 9 P1, 10× cadence, summed damage = 19 normals`,
+      g.visibleSquadCount === 10 && normalShots.length === 9 &&
+      approx(heavyShots, 10 * R * modifier * 10, 1) &&
+      normalShots.every((n) => approx(n, 10 * R * modifier, 1)) &&
+      g.projectiles.filter((p) => p.active).every((p) => p.damage === WEAPONS.rifle.damage * 3) &&
+      approx(shots.length * WEAPONS.rifle.damage * 3 / 10, 19 * R * modifier * WEAPONS.rifle.damage * 3, 30) &&
+      g.stats.projectilePoolExhausted === 0,
+      `${heavyShots} heavy shots + ${normalShots.join('/')} normal shots; ${shots.length * 30 / 10} DPS emitted`);
+  }
+}
+
+{
+  const g = new Game({ seed: 10, initialSquadPower: 9 });
+  g.scripted = true;
+  run(g, 0.2);
+  const first = g.soldiers[0];
+  const remaining = first.nextShotAt - g.time;
+  g.addSquadPower(1, false);
+  const mergePhaseOk = Math.abs(first.nextShotAt - g.time - remaining / 10) < 1e-9;
+  g.loseSquadPower(1, 'contact');
+  const splitPhaseOk = Math.abs(first.nextShotAt - g.time - remaining) < 1e-9;
+  const splitNormal = g.visibleSquadCount === 9 && g.soldiers.filter((s) => s.alive && s.death === 0).every((s) => s.representedPower === 1);
+  g.setSquadPower(19);
+  g.addSquadPower(1, false);
+  const twenty = g.visibleSquadCount === 2 && g.soldiers.every((s) => s.representedPower === 10);
+  g.loseSquadPower(1, 'contact');
+  check('Merge/split 9↔10 and 19↔20 preserve power, normal remainder and firing-cycle progress',
+    mergePhaseOk && splitPhaseOk && splitNormal && twenty && g.visibleSquadCount === 10 &&
+    g.soldiers.filter((s) => s.alive && s.death === 0 && s.representedPower === 1).length === 9,
+    `phase merge=${mergePhaseOk} split=${splitPhaseOk}; 20→19 visible=${g.visibleSquadCount}`);
+  const layout = formationLayout(58);
+  check('Formation: 499 power fits 58 visible soldiers inside existing depth budget',
+    layout.frontY - layout.rearY <= SQUAD.formationMaxDepth + 1e-9 && layout.rearY >= -SQUAD.formationMaxRearDepth - 1e-9,
+    `${layout.columns} columns, ${layout.rows} rows, depth ${layout.frontY - layout.rearY}`);
 }
 
 // Functional acceptance test (section 44) -----------------------------------
