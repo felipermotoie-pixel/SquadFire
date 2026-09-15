@@ -11,9 +11,9 @@
  *
  * Profiles (gate-choice policies — harness only, normal play is untouched):
  *   A minimal   pick the LOWER projectedDpsScore; tie-break fireRate → damage → squad
- *   B balanced  PRIMARY. squadFactor = postPower / 5, damageFactor = postDamageMod,
- *               fireRateFactor = postFireRateMod, imbalanceRatio = max / min; pick the
- *               LOWER ratio; ties → lower score → squad → fireRate → damage
+ *   B balanced  PRIMARY. It never picks a no-op portal when the other option changes
+ *               the squad. Among effective options, it picks the HIGHER real post-choice
+ *               DPS; ties → lower imbalance ratio → squad → fireRate → damage.
  *   C maximal   pick the HIGHER score; tie-break damage → fireRate → squad
  * projectedDpsScore = postPower × postDamageMod × postFireRateMod, computed post-choice
  * with the real modifier caps and the real clamped +Squad gain (never visible units).
@@ -74,6 +74,9 @@ interface GateRecord {
   effectActuallyApplied: GateEffect | null;
   powerBefore: number;
   post: PostState;
+  leftEffective: boolean;
+  rightEffective: boolean;
+  decisionReason: string;
 }
 
 interface BossRecord {
@@ -168,21 +171,39 @@ function tieBreak(profile: Profile, left: GateEffect, right: GateEffect): 'left'
 
 const EPS = 1e-9;
 
+/** True only when this portal changes the state the engine will actually use. */
+function isEffectiveChoice(g: Game, post: PostState): boolean {
+  return post.power !== g.squadPower || post.damage !== g.mods.damage || post.fireRate !== g.mods.fireRate;
+}
+
 /** Returns the side the profile picks for the pair currently on the road. */
-function choose(profile: Profile, g: Game, left: GateEffect, right: GateEffect): { side: 'left' | 'right'; post: PostState } {
+function choose(profile: Profile, g: Game, left: GateEffect, right: GateEffect): { side: 'left' | 'right'; post: PostState; leftEffective: boolean; rightEffective: boolean; reason: string } {
   const pl = projectPost(g, left);
   const pr = projectPost(g, right);
+  const leftEffective = isEffectiveChoice(g, pl);
+  const rightEffective = isEffectiveChoice(g, pr);
   let side: 'left' | 'right';
+  let reason: string;
   if (profile === 'A') {
     side = Math.abs(pl.score - pr.score) < EPS ? tieBreak(profile, left, right) : pl.score < pr.score ? 'left' : 'right';
+    reason = 'lowest projected DPS';
   } else if (profile === 'C') {
     side = Math.abs(pl.score - pr.score) < EPS ? tieBreak(profile, left, right) : pl.score > pr.score ? 'left' : 'right';
+    reason = 'highest projected DPS';
+  } else if (leftEffective !== rightEffective) {
+    side = leftEffective ? 'left' : 'right';
+    reason = 'only effective portal';
+  } else if (Math.abs(pl.score - pr.score) >= EPS) {
+    side = pl.score > pr.score ? 'left' : 'right';
+    reason = 'highest effective DPS';
+  } else if (Math.abs(pl.imbalanceRatio - pr.imbalanceRatio) >= EPS) {
+    side = pl.imbalanceRatio < pr.imbalanceRatio ? 'left' : 'right';
+    reason = 'lower imbalance at equal DPS';
   } else {
-    if (Math.abs(pl.imbalanceRatio - pr.imbalanceRatio) >= EPS) side = pl.imbalanceRatio < pr.imbalanceRatio ? 'left' : 'right';
-    else if (Math.abs(pl.score - pr.score) >= EPS) side = pl.score < pr.score ? 'left' : 'right';
-    else side = tieBreak(profile, left, right);
+    side = tieBreak(profile, left, right);
+    reason = 'fixed kind tie-break';
   }
-  return { side, post: side === 'left' ? pl : pr };
+  return { side, post: side === 'left' ? pl : pr, leftEffective, rightEffective, reason };
 }
 
 function sameEffect(a: GateEffect | null, b: GateEffect | null): boolean {
@@ -195,6 +216,21 @@ function sameEffect(a: GateEffect | null, b: GateEffect | null): boolean {
 function fmtEffect(e: GateEffect | null): string {
   if (!e) return '—';
   return e.kind === 'squad' ? `+${e.amount} SQUAD` : e.kind === 'damage' ? `×${e.multiplier} DMG` : `×${e.multiplier} FR`;
+}
+
+/** Guards the policy contract without changing the game or its balance data. */
+function assertProfileBPolicy(): void {
+  const cappedDamage = { squadPower: 20, mods: { damage: MODIFIER_CAPS.damageMax, fireRate: 1 } } as Game;
+  const noOpVsUseful = choose('B', cappedDamage, { kind: 'damage', multiplier: 1.3 }, { kind: 'fireRate', multiplier: 1.15 });
+  if (noOpVsUseful.side !== 'right' || noOpVsUseful.leftEffective || !noOpVsUseful.rightEffective) {
+    throw new Error('Profile B selected a no-op portal while an effective portal was available');
+  }
+
+  const normal = { squadPower: 1, mods: { damage: 1, fireRate: 1 } } as Game;
+  const higherDps = choose('B', normal, { kind: 'damage', multiplier: 1.3 }, { kind: 'squad', amount: 3 });
+  if (higherDps.side !== 'right' || !higherDps.leftEffective || !higherDps.rightEffective) {
+    throw new Error('Profile B did not prefer the higher effective DPS portal');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +303,9 @@ function runProfile(profile: Profile, seed: number): RunRecord {
         effectActuallyApplied: null as GateEffect | null,
         powerBefore: g.squadPower,
         post: decision.post,
+        leftEffective: decision.leftEffective,
+        rightEffective: decision.rightEffective,
+        decisionReason: decision.reason,
         leftId: a.id,
         rightId: b.id,
       };
@@ -566,6 +605,8 @@ function buildReport(primary: Record<Profile, RunRecord>, supplemental: RunRecor
 
 function main() {
   const wantJson = process.argv.includes('--json');
+  assertProfileBPolicy();
+  console.error('[measure] Profile B policy checks: no-op avoided; higher effective DPS preferred');
   const primary = {} as Record<Profile, RunRecord>;
   for (const p of PROFILES) {
     const t0 = performance.now();

@@ -15,6 +15,23 @@ como concluída sem evidência.
 
 ## Em andamento
 
+### 15/09/2026 — P01: inventário e baseline medido com um soldado
+
+- **Concluído**: P01-01 inventariou a base real no commit `0fef40f`, saves v3/migrações, assets,
+  suítes, relatórios e estado local inicial limpo.
+- **Validado**: execução sequencial direta aprovou 67/67 checks de tiro/formação, 19/19 de
+  fases/portais/persistência e TypeScript. A tentativa inicial via pnpm falhou antes dos testes por
+  `EEXIST`/`EBUSY` no registro de workspace; nenhuma dependência foi reinstalada.
+- **Concluído**: Profile B do harness passou a evitar portal sem efeito quando existe ganho aplicável;
+  entre ganhos efetivos usa maior DPS, menor desequilíbrio e desempate fixo. A política registra sua
+  justificativa no relatório bruto e possui guardas executadas para os dois casos críticos.
+- **Validado**: campanha Terra com início em 1 soldado foi medida em 6 seeds fixas. Profile B venceu
+  todas, mas os dois bosses continuam morrendo durante a aproximação; o resultado permanece
+  `BALANCE REVIEW REQUIRED`. Não houve ajuste de HP, dano, velocidade, portais, arte, Shop ou contas.
+
+Evidências: [plano P01](../planos/pendentes/01_EM_ANDAMENTO_P01_PRODUTO_E_ARQUITETURA.md) e
+[medição Earth](../reports/EARTH_BALANCE_v0.4.0.md).
+
 ### 15/09/2026 — organização do programa e correções locais
 
 - **Concluído**: início de partidas e RETRY fixado em um soldado.
@@ -103,4 +120,3 @@ documentação de produto:
 
 Não adicionar preço, estatística, resultado de teste, publicação ou compra como fato sem
 uma evidência verificável.
-

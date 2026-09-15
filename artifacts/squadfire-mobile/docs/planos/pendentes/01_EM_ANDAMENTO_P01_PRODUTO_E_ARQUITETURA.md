@@ -11,7 +11,7 @@ Definir uma versão completa e finita, com contratos comuns para arte, gameplay,
 
 ## Atividades em ordem
 
-- [ ] **P01-01** — Inventariar código, saves, arte, testes e relatórios; registrar a base sem perder mudanças locais.
+- [x] ~~**P01-01** — Inventariar código, saves, arte, testes e relatórios; registrar a base sem perder mudanças locais.~~
 - [ ] **P01-02** — Definir público, Android/iPhone mínimo e alvo, idioma, sessão esperada e acessibilidade.
 - [ ] **P01-03** — Resolver direção artística, política de Continuar e inclusão de dinheiro real na primeira versão.
 - [ ] **P01-04** — Fixar escopo de lançamento: Terra com dez fases, abertura/Home, tutorial, perfil, contas, loja, itens, skins e áudio.
@@ -19,7 +19,7 @@ Definir uma versão completa e finita, com contratos comuns para arte, gameplay,
 - [ ] **P01-06** — Definir IDs e versões para jogador, partida, checkpoint, catálogo, item, skin, transação e balanceamento.
 - [ ] **P01-07** — Registrar responsáveis, critérios de aceite e projeção de esforço ajustada às decisões.
 
-- [ ] **P01-08** — Preparar a medição inicial antes da reforma: revisar o ganho pós-cap do Profile B, usar SQUAD.initialSize no código e na descrição, verificar escolha/aplicação do portal e registrar campanha com 1 soldado, seeds fixas e código identificado. Executar regressões de combate/fases/tipos na base; separar falhas numéricas de defeitos mecânicos. Reaproveitar o instrumento em P06, sem duplicar implementação.
+- [x] ~~**P01-08** — Preparar a medição inicial antes da reforma: revisar o ganho pós-cap do Profile B, usar SQUAD.initialSize no código e na descrição, verificar escolha/aplicação do portal e registrar campanha com 1 soldado, seeds fixas e código identificado. Executar regressões de combate/fases/tipos na base; separar falhas numéricas de defeitos mecânicos. Reaproveitar o instrumento em P06, sem duplicar implementação.~~
 - [ ] **P01-09** — Definir IDs do app, ambiente interno, caminho de build Android/iOS/web, interfaces de logs/eventos e artefatos de teste. Conferir cedo acesso a aparelhos/contas e compilar a base atual no alvo disponível. P02 usa esse caminho para sua cena; P07 acrescenta login real. Não esperar P14.
 
 ## Contratos
@@ -56,7 +56,7 @@ Entrada: Nenhuma etapa anterior. Esta é a única etapa liberada para execução
 
 Saída: Decisões que afetam contratos registradas; baseline atual medido; contratos versionados; ambiente de teste e caminho de build definidos.
 
-Próxima ação: terminar P01-01 (inventário parcial já inspecionado), depois confirmar público/aparelhos e decisões em P01-02/P01-03. Fechar contratos e executar o diagnóstico P01-08.
+Próxima ação: executar P01-02, confirmando público, aparelhos mínimo/alvo, idioma, sessão esperada e acessibilidade. P01-01 e o diagnóstico técnico P01-08 foram concluídos em 15/09/2026; P01-03 e contratos continuam bloqueados pelas decisões de produto correspondentes.
 
 ## Impacto sobre os outros planos
 
@@ -66,6 +66,44 @@ Antes de encerrar uma atividade, registrar aqui a alteração, a evidência e a 
 somente o texto realmente concluído; itens parciais permanecem `[ ]` com nota de andamento.
 Não há acompanhamento separado. O número inicial do arquivo define a ordem; o ID P01 preserva a referência histórica.
 Se uma alteração invalidar contrato ou aceite anterior, reabrir o item afetado e validar antes de avançar.
+
+## Registro de execução
+
+### 15/09/2026 — P01-01 concluído: inventário real da base
+
+- **Código e estado:** `HEAD` era `0fef40f` (`Adjustments`) e `git status --short` estava vazio antes
+  desta atividade. O motor está em `game/`, a UI em `app/` e `components/`, e o harness da campanha em
+  `scripts/measure-earth.ts`. As mudanças desta execução ficaram limitadas ao harness e aos relatórios/
+  documentos aqui citados; nenhuma alteração local anterior foi descartada.
+- **Saves:** `game/campaign.ts` e `game/campaign-progress.ts` implementam progresso de campanha v3 com
+  migração de saves wave-era/v2; o save guarda recordes, não retomada de partida. A suíte de fases cobre
+  save novo, migração, limites, idempotência e planetas desconhecidos.
+- **Assets:** runtime contém soldado azul, grunt vermelho, boss crimson e horizonte costeiro; `assets/source/`
+  preserva os originais e variantes v0.3.5. Não houve mudança de arte.
+- **Testes e relatórios existentes:** `game/tests/fire-system.test.ts`,
+  `game/tests/stage-system.test.ts`, `docs/reports/OPENING_BALANCE_2026-09-15.md`,
+  `docs/reports/campaign-after-2026-09-15.json` e `docs/reports/EARTH_BALANCE_v0.4.0.*`.
+- **Evidência executada:** `pnpm run test:sim` e `pnpm run typecheck` foram tentados primeiro e não
+  iniciaram as suítes porque o registro de workspace do pnpm retornou `EEXIST`/`EBUSY` para um symlink.
+  Sem reinstalar dependências, a execução sequencial direta de `esbuild` + `node` aprovou **67/67** checks
+  de tiro/formação e **19/19** de fases/portais/persistência. `tsc -p tsconfig.json --noEmit` também passou.
+
+### 15/09/2026 — P01-08 concluído: baseline de um soldado e Profile B
+
+- **Correção limitada do harness:** `scripts/measure-earth.ts` continua iniciando com
+  `SQUAD.initialSize` (1) e usando `Game.setInputX`, o mesmo alvo horizontal usado pela mira manual.
+  Profile B agora rejeita um portal sem efeito quando a alternativa altera poder/dano/cadência; quando as
+  duas opções são efetivas, escolhe maior DPS real, depois menor desequilíbrio e, por fim, desempate fixo.
+  Cada decisão registra efetividade esquerda/direita e motivo no JSON. Duas guardas internas executadas
+  na medição provam `no-op avoided` e `higher effective DPS preferred`.
+- **Medição executada:** compilação direta de `scripts/measure-earth.ts` com esbuild e execução Node,
+  viewport 402×874, `dt=1/60`, seed primária 1337 (A/B/C) e seeds suplementares B 17/29/43/71/101.
+  Resultado integral em `docs/reports/EARTH_BALANCE_v0.4.0.md` e `.json`.
+- **Resultado:** B venceu 6/6 campanhas, de 813,3 a 825,6 s; na seed 1337, venceu em 822,6 s,
+  completou as dez fases e chegou a poder 73. Não houve exaustão do pool. Sub-boss e boss final ainda
+  morreram durante a aproximação em todas as seeds B (logo, `BALANCE REVIEW REQUIRED`). As regressões
+  aprovadas não indicam defeito mecânico de tiro reto, mira por arrasto, colisão, P10 ou portal; a pendência
+  é numérica e pertence ao balanceamento posterior, sem ajuste aplicado nesta etapa.
 
 ## Registro da revisão
 
