@@ -64,6 +64,35 @@ somente o texto realmente concluído; itens parciais permanecem `[ ]` com nota d
 Não há acompanhamento separado. O número inicial do arquivo define a ordem; o ID P12 preserva a referência histórica.
 Se uma alteração invalidar contrato ou aceite anterior, reabrir o item afetado e validar antes de avançar.
 
+## Feedback tático e fluidez (16/09/2026)
+
+Planejamento aprovado, integrado a P12-01/02/04/05/06; implementação pendente.
+
+- Priorizar aviso de ataque, escudo desativado, impacto válido e portal aplicado sobre disparos repetidos.
+  Todo aviso sonoro essencial tem equivalente visual; vibração opcional não é requisito para sobreviver.
+- Distinguir impacto em proteção de acerto em alvo vulnerável. Consolidar P10 com feedback curto,
+  sem multiplicar volume pela cadência ou ocultar os avisos seguintes.
+- Qualidade reduzida mantém telegráficos, limites de perigo e ponto fraco legíveis.
+  Repetir orçamento térmico/frames com estados finais de P05 em P13; a prova atual não aprova efeitos futuros.
+
+Registro documental: 16/09/2026 — estratégia aprovada pelo responsável e incorporada às atividades acima.
+As caixas de implementação permanecem abertas; aceite funcional e humano ainda pendente.
+
+## Sinais de Wave e ruptura (16/09/2026)
+
+Planejamento aprovado, integrado a P12-01/02/04/05/06; P05 implementa os eventos e P06 mede a leitura.
+
+- Priorizar quatro sinais curtos: prévia da Wave, portal útil aplicado, vínculo/proteção rompido e abertura
+  encerrada. Cada um tem forma, ícone, contraste e/ou texto breve equivalente; nenhum depende só de cor,
+  áudio ou vibração.
+- O Eco de Comando usa o mesmo vocabulário factual do combate e não cria alerta persistente. Som e haptic
+  são opcionais e respeitam volume, mudo, interrupção e movimento reduzido.
+- Qualidade reduzida preserva prévia, alvo vinculado, núcleo e abertura; pode reduzir partículas, sombras,
+  rastros e decoração. P12-05/P13 medem o pior caso de vanguarda e blocos sem o overlay de depuração para
+  evitar que a própria ferramenta seja tratada como desempenho de produção.
+
+Registro documental: 16/09/2026 — nenhum som, efeito, preferência ou medição nova foi executado nesta atualização.
+
 ## Registro da revisão
 
 15/09/2026 — revisão 1.1: dependências, aceite por etapa e responsabilidades corrigidos por inspeção dos planos e do código.

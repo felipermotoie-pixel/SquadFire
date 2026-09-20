@@ -153,7 +153,8 @@ export function GameScreen({ planetId = DEFAULT_PLANET_ID, onStageCleared, onPla
   }, [game]);
   const [hud, setHud] = useState<HudState>(() => readHud(game));
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [debug, setDebug] = useState(false);
+  const [debugGeometry, setDebugGeometry] = useState(false);
+  const [performanceHud, setPerformanceHud] = useState(false);
   const [devOpen, setDevOpen] = useState(false);
   const [reducedShake, setReducedShake] = useState(false);
   const hudRef = useRef(hud);
@@ -256,7 +257,14 @@ export function GameScreen({ planetId = DEFAULT_PLANET_ID, onStageCleared, onPla
     <View style={[styles.root, Platform.OS === 'web' && styles.webRoot]}>
       <View style={gameSurfaceStyle}>
       <StatusBar style="light" />
-      <Battlefield game={game} width={width} height={height} debug={debug} onSync={onSync} />
+      <Battlefield
+        game={game}
+        width={width}
+        height={height}
+        debugGeometry={debugGeometry}
+        performanceHud={performanceHud}
+        onSync={onSync}
+      />
       <View style={StyleSheet.absoluteFill} {...pan.panHandlers} />
 
       {/* ---- Minimal HUD ---- */}
@@ -397,8 +405,10 @@ export function GameScreen({ planetId = DEFAULT_PLANET_ID, onStageCleared, onPla
       {__DEV__ && devOpen && (
         <DevPanel
           game={game}
-          debug={debug}
-          onToggleDebug={() => setDebug((d) => !d)}
+          debugGeometry={debugGeometry}
+          performanceHud={performanceHud}
+          onToggleDebugGeometry={() => setDebugGeometry((enabled) => !enabled)}
+          onTogglePerformanceHud={() => setPerformanceHud((enabled) => !enabled)}
           onClose={() => {
             setDevOpen(false);
             setHud(readHud(game));
@@ -459,16 +469,20 @@ function NoticeBanner({ notice }: { notice: Notice }) {
 
 function DevPanel({
   game,
-  debug,
-  onToggleDebug,
+  debugGeometry,
+  performanceHud,
+  onToggleDebugGeometry,
+  onTogglePerformanceHud,
   onClose,
   onRestart,
   onResetProgress,
   bottom,
 }: {
   game: Game;
-  debug: boolean;
-  onToggleDebug: () => void;
+  debugGeometry: boolean;
+  performanceHud: boolean;
+  onToggleDebugGeometry: () => void;
+  onTogglePerformanceHud: () => void;
   onClose: () => void;
   onRestart: () => void;
   onResetProgress?: () => void;
@@ -615,7 +629,8 @@ function DevPanel({
             refresh();
           }}
         />
-        <Btn label={debug ? 'Overlay ON' : 'Overlay OFF'} onPress={onToggleDebug} accent={debug} />
+        <Btn label={performanceHud ? 'Metrics ON' : 'Metrics OFF'} onPress={onTogglePerformanceHud} accent={performanceHud} />
+        <Btn label={debugGeometry ? 'Overlay ON' : 'Overlay OFF'} onPress={onToggleDebugGeometry} accent={debugGeometry} />
         <Btn
           label={game.phase === 'paused' ? 'Resume' : 'Pause'}
           onPress={() => {

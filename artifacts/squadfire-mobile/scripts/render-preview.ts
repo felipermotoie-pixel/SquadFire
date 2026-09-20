@@ -132,6 +132,29 @@ const scenarios: Scenario[] = [
       g.spawnGatePair({ kind: 'squad', amount: 5 }, { kind: 'damage', multiplier: 2 }, 3.2);
     },
   },
+  // P02 reference: one real renderer/simulation frame that combines the visual-contract
+  // elements without changing a campaign rule or awarding progress.
+  {
+    name: '27-p02-reference-power-019',
+    seconds: 2.4,
+    setup: (g) => {
+      g.scripted = true;
+      g.setSquadPower(19);
+      g.setInputX(-0.28);
+      g.spawnGatePair({ kind: 'squad', amount: 5 }, { kind: 'damage', multiplier: 2 }, 6.0);
+      const enemies = [
+        ['runner', -0.42, 3.4],
+        ['grunt', 0.08, 4.0],
+        ['elite', 0.48, 4.6],
+      ] as const;
+      for (const [kind, x, y] of enemies) {
+        const enemy = g.spawnEnemy(kind, x, y);
+        enemy.speed = 0;
+        enemy.hp = 1e9;
+        enemy.maxHp = 1e9;
+      }
+    },
+  },
   {
     name: '05-debug-overlay',
     seconds: 5,
@@ -267,7 +290,7 @@ function main() {
         const t0 = performance.now();
         const rec = Skia.PictureRecorder();
         const c = rec.beginRecording(Skia.XYWHRect(0, 0, W, H));
-        renderer.draw(c, game, 0, 0, sc.debug ?? false);
+        renderer.draw(c, game, 0, 0, sc.debug ?? false, false);
         const pic = rec.finishRecordingAsPicture();
         const canvas = surface.getCanvas();
         canvas.clear(Skia.Color('#000000'));

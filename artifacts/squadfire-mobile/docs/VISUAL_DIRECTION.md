@@ -1,11 +1,44 @@
-# SquadFire — Visual Direction
+# SquadFire — Guia de arte P02-01
 
-**Concept: "Sunlit Causeway".** A bright, saturated coastal highway cutting across turquoise water toward a glass megacity on the horizon. Clean concrete, cyan safety rails, blue armored heroes, red-hot enemies. Premium stylized realism, readable at arm's length — and deep: the bridge runs to the vanishing point and enemies are seen long before they matter.
+Status: concluído em 16/09/2026 como contrato de direção para a prova visual de P02.
+Este documento substitui o antigo guia de direção visual como referência única de arte até a
+decisão técnica de P02-07. Ele define produção e avaliação visual; não altera regras de
+combate, geometria, colisão, balanceamento ou a tecnologia de renderização.
 
-## Camera (v0.3.5 long-range framing)
-Elevated, pitched-down perspective: the road is widest at the bottom (squad) and funnels to a single vanishing point on the horizon. Horizon at 17.5 % height, squad line at 71.5 %, focal length tied to `ROAD_LENGTH` (= 8) so the spawn line reads at ~22 % scale (~20 px figures). The 50-soldier rear row still lands above the bottom edge. The drawn bridge continues to `ROAD_FAR` (90 units, a few px under the horizon) — never end the road inside the frame.
+**Conceito: "Sunlit Causeway".** Uma rodovia costeira saturada e luminosa cruza água turquesa
+até uma megacidade de vidro no horizonte. Concreto limpo, guardrails ciano, aliados azuis e
+ameaças quentes criam uma fantasia de combate sci-fi clara. O resultado deve parecer 3D
+estilizado premium, legível à distância de uso de um celular e profundo: a ponte chega ao ponto
+de fuga e inimigos são vistos antes de se tornarem uma ameaça.
 
-## Depth layering (back → front)
+## Princípios não negociáveis
+
+1. **Leitura antes de ornamento.** A ordem da imagem é: perigo iminente e área segura; alvo
+   vulnerável; escolha de portal; efeitos decorativos. Nenhuma partícula, brilho ou painel pode
+   esconder a trajetória, a silhueta inimiga, o portal, a barra do boss ou o toque de arrasto.
+2. **Cor nunca é a única identificação.** Forma, proporção, posição, animação e marcador devem
+   distinguir aliado, P10, inimigo e tipo de ameaça mesmo sob baixa saturação, tela pequena ou
+   efeitos reduzidos.
+3. **O desenho explica a simulação, não a substitui.** Tiros continuam dashes curtos e retos na
+   direção `ROAD_FORWARD`; não usar feixe contínuo, curvatura, homing ou impacto visual fora da
+   colisão. O corpo aliado permanece voltado ao ponto de fuga.
+4. **Profundidade com economia.** Materiais, luz, sombra de contato, névoa e perspectiva devem
+   criar profundidade antes de aumentar quantidade de sprites, shaders ou partículas.
+5. **Estados futuros são estudos.** Blindagem, suporte, escudo de aproximação e ponto fraco são
+   linguagem de conceito para P05; não representam mecânica entregue nesta etapa.
+
+## Câmera e proporções — contrato preservado
+Perspectiva elevada e inclinada: a estrada é mais larga na base (formação) e converge em um
+único ponto de fuga. Horizonte em 17,5% da altura; linha da formação em 71,5%; distância focal
+vinculada a `ROAD_LENGTH` (= 8), para que a linha de spawn seja lida em ~22% de escala (~20 px
+de figura). A fileira traseira de 50 soldados permanece acima da borda inferior. A ponte desenhada
+continua até `ROAD_FAR` (= 90), poucos pixels abaixo do horizonte; ela nunca termina dentro do quadro.
+
+P02 não muda esses valores nem densidade, seed, distância de spawn, velocidade percebida ou área
+jogável. Qualquer proposta que os altere é funcional, deve ser separada do estudo gráfico e exige
+revalidação posterior em P06.
+
+## Materiais, iluminação e camadas (fundo → frente)
 1. Sky gradient + skyline painting (its sea horizon aligned to the camera horizon); faint mirrored reflection under the horizon.
 2. Water: gradient, drifting noise highlights, sun-glitter column right of centre, perspective swell lines tightening toward the horizon.
 3. Road: gradient + grain, slab seams and debris to the horizon, converging longitudinal seams, cyan edge guide strips that stay visible after the seams vanish, aerial-perspective fade past 1.5 × `ROAD_LENGTH`.
@@ -13,19 +46,68 @@ Elevated, pitched-down perspective: the road is widest at the bottom (squad) and
 5. Units: contact shadows scale with depth; enemies materialise over 0.5 s at the spawn line and carry a warm ground marker below ~45 % scale so a 20 px silhouette still reads as a threat. Sprite size always equals hitbox scale — no size floor.
 6. Haze: strongest right under the horizon, gone by the spawn line, so distant figures stay readable while the far bridge dissolves.
 
-## Palette (`components/battlefield/palette.ts`)
+## Paleta e sinais de estado (`components/battlefield/palette.ts`)
 - Sky/horizon painted backdrop (`assets/environment/horizon_coastal.jpg`), turquoise water gradient with animated noise.
 - Road: warm grey concrete gradient (far → near), slab seams, subtle grain, debris marks.
 - Barriers: three-tone modules (lit inner face on the right, shaded on the left, bright top), cyan rail.
-- Squad: cobalt blue armor. Enemies: crimson armor; elites tinted hotter with a glow. Boss: dark crimson with a left-arm cannon.
-- VFX: rifle tracers are short amber-white dashes (`tracerCore` #ffd57a over a faint `tracerGlow` rgba(255,150,60,0.32)), 0.25 u tail near / scaled down to 0.18 far, 1.6 px core near → 1.0 px far, fading over the last 12 % of the travel budget so they dissolve at the far boundary instead of popping. Glow is drawn under the distance haze, cores above it so far shots stay readable. Never laser beams. Muzzle: pale-gold stars (unchanged). Impacts: compact metallic sparks (bright core dot, 3–4 short sparks, 0.14 s; boss impacts larger). Kill bursts in enemy red.
+- Esquadrão P1: armadura azul-cobalto/aço e contra-luz ciano. P10: armadura vermelha, 12% maior,
+  símbolo/chevron claro e halo compacto atrás do corpo. A formação e o símbolo devem confirmar que
+  ele é aliado, pois vermelho também aparece nas ameaças.
+- Inimigos atuais: carapaça carmesim/gunmetal, visor e núcleo laranja. Boss: carmesim escuro com
+  canhão no braço esquerdo. Os quentes inimigos usam silhuetas voltadas para a câmera; aliados
+  permanecem vistos por trás em direção ao horizonte.
+- Estudos P05: corredor = corpo estreito, avanço rápido e marcador curto; blindado = massa larga,
+  baixa e pesada; suporte = silhueta protegida e marcador de ligação. Esses estudos não adicionam
+  novos tipos ao motor nesta etapa.
+- Portal: ciano para esquadrão, dourado para dano e violeta para cadência, com numeral grande e
+  moldura estável. A moldura e o texto devem sobreviver quando os efeitos decorativos forem reduzidos.
+- VFX: tracer de rifle é um dash curto âmbar/branco (`tracerCore` #ffd57a sobre `tracerGlow`
+  rgba(255,150,60,0.32)), 0,25 u perto / 0,18 u longe, núcleo de 1,6 px perto → 1,0 px longe,
+  apagando nos últimos 12% do trajeto. O brilho fica abaixo da névoa e o núcleo acima dela. Nunca
+  usar lasers. Muzzle é uma estrela dourada pálida. Impacto é faísca metálica compacta: ponto claro
+  e 3–4 faíscas curtas por 0,14 s; o boss usa variante maior. Uma consolidação P10 usa pulso
+  curto e concentrado, sem comunicar dano extra.
 - Gates: cyan (squad), gold (damage), violet (fire rate) frames with huge numerals.
 
-## Characters
-Generated 2.5D sprites (stylized realism, hard-surface armor, strong top key light), alpha-trimmed. Blue vs red must be instant: soldiers royal-blue/steel with cyan emissive back-light; grunts crimson/gunmetal with an orange visor and chest core (the warm accent is what survives at 20 px); runners reuse the grunt with an amber tint, elites hotter + larger. Anchors and muzzles are declared in `game/visuals.ts` (foot anchor, weapon anchor, muzzle position as fractions of the frame). Soldiers always face the vanishing point; the sprite is authored rear-view with a vertical rifle and is never rotated by gameplay (only `baseVisualRotationOffset`, shared with the sim so the muzzle stays on the barrel tip). Even-id enemies are mirrored for variety.
+## Personagens, silhueta e estados futuros
+Sprites 2.5D usam realismo estilizado, armadura hard-surface, chave forte superior e alpha aparado.
+Âncoras e muzzles permanecem declarados em `game/visuals.ts` (pé, arma, muzzle como frações do
+frame). Soldados sempre encaram o ponto de fuga: sprite traseiro, rifle vertical e nenhuma rotação
+por estado de gameplay; apenas `baseVisualRotationOffset`, compartilhado com a simulação, pode ser
+usado para alinhar a boca do cano.
 
-## Lighting cues
-Key light from top-left: contact shadow ellipses under every unit, barrier top faces brightest, right inner faces lit. Haze fades the far bridge into the horizon; the road slab itself cools toward sky colour with distance.
+Estudo visual do boss futuro: o escudo de aproximação deve ter três estados distinguíveis — campo
+ativo com impactos bloqueados, desligamento explícito e ponto fraco exposto. Nenhum deles é
+implementado ou conectado a dano antes de P05.
+
+## Luz, contraste e acessibilidade visual
+Chave de luz no alto à esquerda: elipses de sombra de contato sob cada unidade, topo das barreiras
+mais claro e face interna direita iluminada. A névoa leva a ponte distante ao horizonte; a placa da
+estrada esfria para a cor do céu com a distância. Textura e sujeira devem ser discretas: não usar
+detalhe de baixo contraste como sinal tático.
+
+Todo estado obrigatório deve passar em redução de efeitos: sem depender somente de piscar, ruído,
+vibração, áudio ou uma única cor. A avaliação humana de legibilidade em aparelhos-alvo pertence a
+P02-05/P02-06; este guia não declara acessibilidade ou desempenho aprovados.
 
 ## HUD
 Minimal: stage pill (`STAGE 03`), squad count, pause; boss name + bar only while the boss is alive; transient banners for gates/stage start/stage clear/boss events. No counters or debug text in gameplay; the debug overlay is dev-only.
+
+## Referências e produção de assets
+
+- Conceitos, imagens e texturas novos devem ser originais, gerados para o projeto ou usados sob
+  licença compatível documentada. Não reproduzir personagens, logos, composição reconhecível ou
+  assets de outros jogos.
+- Antes de substituir um asset, conservar o original e medir sua âncora, muzzle, alpha e linha de
+  horizonte. Seguir [`ASSET_PIPELINE.md`](ASSET_PIPELINE.md) para registro, carregamento e preview.
+- Não produzir a biblioteca inteira nesta etapa. P02-02 prepara conceitos; P02-04 prova uma cena;
+  P02-06 mede em aparelho; P02-07 escolhe tecnologia e orçamento.
+
+## Checklist de revisão para as próximas atividades
+
+- O quadro preserva horizonte 17,5%, formação 71,5% e a mesma geometria de jogo?
+- P1, P10, inimigo, portal, ameaça rápida e área segura são reconhecidos sem depender de cor?
+- O tracer segue o muzzle e a linha reta real, sem encobrir alvo, HUD ou dedo?
+- Há profundidade por luz, sombra, material e perspectiva antes de novas partículas?
+- O conceito foi identificado como estudo se depender de mecânica futura?
+- A origem/licença de cada referência nova está registrada?

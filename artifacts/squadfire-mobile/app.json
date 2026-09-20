@@ -13,9 +13,12 @@
       "resizeMode": "contain"
     },
     "ios": {
+      "bundleIdentifier": "com.feinmach.squadfire",
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "package": "com.feinmach.squadfire"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },

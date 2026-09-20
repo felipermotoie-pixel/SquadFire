@@ -2,7 +2,7 @@
 
 Revisão documental 1.1 · 15/09/2026 · Ordem de execução: 03.
 Status: Em andamento por base existente: controles, formação, disparos e save de recordes estão implementados. A retomada da partida ainda não existe; nenhum novo item está aprovado só por essa base.
-Dependência de liberação: [P02 — etapa 2](02_PENDENTE_P02_REFORMA_GRAFICA.md).
+Dependência de liberação: [P02 — etapa 2](../concluidos/02_CONCLUIDO_P02_REFORMA_GRAFICA.md).
 Estimativa preliminar: 4–7 dias úteis de trabalho; não é prazo contratado.
 
 ## Objetivo
@@ -57,6 +57,23 @@ Antes de encerrar uma atividade, registrar aqui a alteração, a evidência e a 
 somente o texto realmente concluído; itens parciais permanecem `[ ]` com nota de andamento.
 Não há acompanhamento separado. O número inicial do arquivo define a ordem; o ID P04 preserva a referência histórica.
 Se uma alteração invalidar contrato ou aceite anterior, reabrir o item afetado e validar antes de avançar.
+
+## Contrato de controle tático (16/09/2026)
+
+Planejamento aprovado, integrado a P04-01/02/06/07; implementação pendente.
+
+- Um dedo controla o deslocamento horizontal e a mira; disparo segue automático e reto, com dano por
+  colisão. Não adicionar botão de habilidade, troca de formação ou seleção automática de alvo.
+- Testar mudança de prioridade entre duas ameaças, passagem por portal e retorno à mira em 30/60/120 Hz.
+  Pausa, perda de foco e troca de dedo não podem deixar a mira presa nem gerar movimento inesperado.
+- Preparar eventos de resultado ligados à tentativa para o resumo: ameaça abatida, causa da perda,
+  efeito efetivo do portal. P05 define os eventos das novas mecânicas; P03 apresenta, P08 agrega.
+  O resumo nunca altera simulação ou recompensa.
+- O checkpoint aprovado continua no início da fase. Ao integrar P05, revalidar reinício determinístico
+  de padrões/escudos/pontos fracos e impedir duplicação de estatísticas após restauração.
+
+Registro documental: 16/09/2026 — estratégia aprovada pelo responsável e incorporada às atividades acima.
+As caixas de implementação permanecem abertas; aceite funcional e humano ainda pendente.
 
 ## Registro da revisão
 

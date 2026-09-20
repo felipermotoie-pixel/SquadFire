@@ -16,14 +16,17 @@ export interface BattlefieldProps {
   game: Game;
   width: number;
   height: number;
-  debug: boolean;
+  /** Expensive collision, trajectory and hitbox geometry for diagnosis only. */
+  debugGeometry: boolean;
+  /** Lightweight runtime counters, usable without the diagnostic geometry. */
+  performanceHud: boolean;
   /** Called ~8×/s so the React HUD can read game state without per-frame renders. */
   onSync: (game: Game) => void;
 }
 
 const HUD_SYNC_INTERVAL_MS = 120;
 
-export function Battlefield({ game, width, height, debug, onSync }: BattlefieldProps) {
+export function Battlefield({ game, width, height, debugGeometry, performanceHud, onSync }: BattlefieldProps) {
   const soldier = useImage(require('@/assets/characters/player/soldier_blue.png'));
   const grunt = useImage(require('@/assets/characters/enemies/grunt_red.png'));
   const boss = useImage(require('@/assets/characters/bosses/boss_crimson.png'));
@@ -51,8 +54,10 @@ export function Battlefield({ game, width, height, debug, onSync }: BattlefieldP
   }, []);
 
   const picture = useSharedValue<SkPicture>(useMemo(() => createPicture(() => {}), []));
-  const debugRef = useRef(debug);
-  debugRef.current = debug;
+  const debugGeometryRef = useRef(debugGeometry);
+  debugGeometryRef.current = debugGeometry;
+  const performanceHudRef = useRef(performanceHud);
+  performanceHudRef.current = performanceHud;
   const syncRef = useRef(onSync);
   syncRef.current = onSync;
 
@@ -70,7 +75,6 @@ export function Battlefield({ game, width, height, debug, onSync }: BattlefieldP
     let frameEma = 16;
     let peak = 0;
     let peakResetAt = last;
-    let retired: SkPicture | null = null;
     const renderer = rendererRef.current as SceneRenderer;
 
     const tick = (now: number) => {
@@ -94,13 +98,14 @@ export function Battlefield({ game, width, height, debug, onSync }: BattlefieldP
 
       const recorder = Skia.PictureRecorder();
       const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, width, height));
-      renderer.draw(canvas, game, sx, sy, debugRef.current);
+      renderer.draw(canvas, game, sx, sy, debugGeometryRef.current, performanceHudRef.current);
       const next = recorder.finishRecordingAsPicture();
       recorder.dispose();
-      // The canvas may still be presenting the previous picture on another
-      // thread, so release pictures one frame late.
-      if (retired) retired.dispose();
-      retired = picture.value;
+      // `Picture` is consumed asynchronously by the native Reanimated mapper.
+      // Do not dispose the previous value here: there is no presentation-complete
+      // callback, so even a one-frame delay can free an object while drawPicture()
+      // still reads it on the UI thread. Keep its lifetime with the shared
+      // value/container until native code offers a presentation acknowledgment.
       picture.value = next;
 
       const frameMs = performance.now() - now;
@@ -127,8 +132,6 @@ export function Battlefield({ game, width, height, debug, onSync }: BattlefieldP
     return () => {
       alive = false;
       cancelAnimationFrame(raf);
-      if (retired) retired.dispose();
-      retired = null;
     };
   }, [game, width, height, picture]);
 

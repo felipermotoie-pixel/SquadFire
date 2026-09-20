@@ -50,7 +50,8 @@ O objetivo é desafio gradual; não ajustar HP secretamente ao gasto, ao invent�
 
 A implementação histórica não teve aceite final de balanceamento. Revalidar integralmente no estado atual.
 Se o boss morrer sistematicamente antes de atacar, comparar alterações de HP, entrada e padrões de ataque.
-Escudo de aproximação exige decisão de design, aviso visual e teste; não inserir proteção oculta.
+Escudo de aproximação foi aprovado na estratégia de 16/09/2026; P05 implementa aviso e estados explícitos,
+P06 mede duração e combate. A aprovação de design não equivale a implementação ou balanceamento validado.
 
 ## Aceite de precisão
 
@@ -81,6 +82,57 @@ Antes de encerrar uma atividade, registrar aqui a alteração, a evidência e a 
 somente o texto realmente concluído; itens parciais permanecem `[ ]` com nota de andamento.
 Não há acompanhamento separado. O número inicial do arquivo define a ordem; o ID P06 preserva a referência histórica.
 Se uma alteração invalidar contrato ou aceite anterior, reabrir o item afetado e validar antes de avançar.
+
+## Medir estratégia, ritmo e aprendizado (16/09/2026)
+
+Planejamento aprovado, integrado a P06-01 a P06-07; nenhum número alterado nesta revisão.
+
+- Comparar mesma seed, poder e modificadores com mira parada, ameaça mais próxima e prioridade tática.
+  Medir perdas, dano efetivo, tempo, alvos protegidos atingidos e janelas aproveitadas. Comparação testa
+  se posicionamento tem efeito observável; não presumir vitória garantida de uma política.
+- Estender o harness para reconhecer estados visíveis de blindagem/suporte/boss, sem consultar decisões
+  futuras do RNG. Conservar Profile B atual como referência histórica: maior DPS de portal não representa
+  sozinho jogador intermediário. Modelar reação, erro e troca de alvo; versionar política e configuração.
+- Medir composição e oferta dos portais após substituição de opções inúteis. Comparar escolhas de poder,
+  dano e cadência em encontros distintos; impedir opção universalmente obrigatória por desenho acidental.
+  Não enfraquecer secretamente uma escolha bem utilizada.
+- Bosses exigem medição separada de aproximação, escudo, tempo vulnerável e combate após chegada.
+  Aproximação protegida precisa deixar a luta legível e manter ritmo; se gerar espera passiva excessiva,
+  revisar duração explicitamente. Não aumentar apenas HP para alongar encontro.
+- No piloto já previsto (mínimo dez participantes, três tentativas), registrar entendimento da causa
+  da derrota, prioridade escolhida, melhora entre tentativas, diversão declarada e desejo espontâneo de
+  jogar novamente. Reportar contagens/amostra; não prometer retenção ou originalidade comprovada.
+- Critério de revisão: confusão recorrente, dano sem reação possível, estratégia sem efeito observável,
+  longos períodos sem decisão ou uma escolha dominante exigem ajuste no plano dono antes do aceite.
+  Envolvimento deve vir de domínio, variedade e feedback; preservar pausa e encerramento voluntário.
+
+Registro documental: 16/09/2026 — estratégia aprovada pelo responsável e incorporada às atividades acima.
+As caixas de implementação permanecem abertas; aceite funcional e humano ainda pendente.
+
+## Medição das Ondas de Ruptura (16/09/2026)
+
+Planejamento aprovado, integrado a P06-01 a P06-07; nenhum número de balanceamento foi alterado.
+
+- Comparar a mesma seed e configuração com mira parada, ameaça mais próxima e prioridade tática. Registrar
+  tempo de leitura da prévia, escolha e ganho efetivo do portal, tempo até romper a formação, erros de mira,
+  primeiro contato, duração da Wave, perdas, dano efetivo e mortes. Não usar uma política que consulte RNG
+  ou estados não visíveis.
+- Separar vanguarda e blocos nas telemetrias: medir se a decisão foi possível antes da horda, se houve espera
+  improdutiva e se a quantidade simultânea preserva leitura. Ajustar scheduler/quantidades somente depois de
+  evidência; não compensar confusão aumentando HP ou dano.
+- Medir cada arquétipo isolado e combinado: runner/líder, blindagem e suporte. A abertura só conta se o
+  jogador puder percebê-la, alinhá-la manualmente e obter efeito observável; miss e alvo errado devem manter
+  resposta coerente, não punição oculta.
+- No piloto humano já previsto, coletar entendimento da ameaça, motivo da escolha de portal, causa da perda,
+  melhora entre tentativas, diversão declarada e desejo espontâneo de repetir. Separar tempo em menus de
+  tempo em combate e registrar tamanho/amostra; não declarar retenção, vício ou originalidade comprovados.
+- Conferir o Eco de Comando contra o log real. Fato ou dica sem evento correspondente é defeito; ausência de
+  dado suficiente deve omitir a dica. Medir se ele esclarece a próxima tentativa sem alongar a transição.
+
+Critério de revisão: se a prévia não gera decisão, o portal ainda aparece tarde, a vanguarda é inevitável,
+uma escolha domina ou a ruptura não é reconhecida, devolver a correção ao P05/P03/P12 antes de alterar números.
+
+Registro documental: 16/09/2026 — estratégia aprovada pelo responsável; medições e aceites permanecem pendentes.
 
 ## Registro da revisão
 

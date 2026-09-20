@@ -8,8 +8,8 @@ validado, está em andamento e será feito, sem substituir os planos.
 
 ## O que seguir agora
 
-**Executar a etapa 01 (P01) primeiro.** Há inventário parcial feito; terminar decisões, contratos,
-diagnóstico da campanha com um soldado e preparação de ambientes antes de iniciar a reforma gráfica.
+**P02 foi concluído em 18/09/2026. Executar agora a etapa 03 (P04).** As decisões, contratos,
+diagnóstico da campanha com um soldado e a prova gráfica foram registrados antes da etapa de jogabilidade/saves.
 Planos com base já implementada não estão todos liberados simultaneamente.
 
 Seguir o número inicial do arquivo, de 01 a 14. O arquivo 00 é este guia, não uma etapa extra.
@@ -20,10 +20,40 @@ Dentro dos planos, `[ ]` significa atividade ainda não aceita; ao terminar, usa
 
 ## Ordem revisada e ponto de liberação
 
+### Estratégia aprovada em 16/09/2026 — Linha de Fogo Tática
+
+Promessa do jogo: controlar um esquadrão com um dedo e vencer por mira, posicionamento e escolhas
+compreensíveis. O ciclo observar → priorizar → alinhar → escolher → perceber resultado deve sustentar
+aprendizado, variedade e vontade de repetir. Originalidade e diversão são hipóteses a validar com jogadores.
+
+A aprovação atual amplia o conteúdo planejado com coluna blindada, suporte protetor, escudo de aproximação
+e pontos fracos de bosses. Essas são mudanças funcionais explícitas, não simples retoques de arte.
+Mantêm-se um soldado em nova partida/RETRY, tiro reto, mira manual, dano por colisão,
+19 = 1 P10 vermelho + 9 P1 azuis e P10 com DPS de dez P1. Não há bônus oculto por skin.
+
+| Dono | Entrega e limite desta estratégia |
+| --- | --- |
+| P02 | Linguagem visual e estudos de estados futuros; prova jogável usa as regras existentes |
+| P04 | Controle responsivo e eventos/checkpoint consistentes; P05 revalida novas mecânicas |
+| P12 | Feedback de ameaça/acerto e qualidade visual sem perder sinais essenciais |
+| P03 | Tutorial curto, Home direcionada, resumo breve e dica baseada em fato |
+| P05 | Compositor de Waves, formações, runner/blindagem/suporte, bosses vulneráveis e portais com benefício real |
+| P06 | Medir escolhas, reação humana, ritmo, dificuldade, ondas e efeito da nova composição de portais |
+| P13 | Provar a experiência integrada, fluidez e compreensão em aparelhos e beta |
+
+P09/P08/P11/P10 continuam responsáveis por economia, perfil, cosméticos e Shop; resumos táticos não
+introduzem moedas ou recompensas paralelas. Sem base de construção, energia, gacha ou pressão para voltar.
+O progresso de campanha e os cosméticos já planejados sustentam objetivos de médio prazo.
+
+Ordem de implementação preservada. Os detalhamentos estão nos próprios planos, sem plano paralelo;
+atividades ainda não executadas permanecem abertas. Antes da execução de cada etapa afetada, reestimar
+seu esforço incluindo esses requisitos: as faixas anteriores não aprovam automaticamente o escopo ampliado.
+Revisão documental concluída nesta data; nenhuma mecânica ou validação de diversão foi executada.
+
 | Etapa | Plano | Situação verificada | Entrega que permite avançar |
 | --- | --- | --- | --- |
-| 01 | [P01 — produto e arquitetura](01_EM_ANDAMENTO_P01_PRODUTO_E_ARQUITETURA.md) | Em andamento — prioridade atual | Decisões que afetam contratos registradas; baseline atual medido; contratos versionados; ambiente de teste e caminho de build definidos. |
-| 02 | [P02 — reforma grafica](02_PENDENTE_P02_REFORMA_GRAFICA.md) | Pendente | Cena jogável comparada, orçamento de frame/memória registrado, tecnologia escolhida e referência visual aceita. |
+| 01 | [P01 — produto e arquitetura](../concluidos/01_CONCLUIDO_P01_PRODUTO_E_ARQUITETURA.md) | Concluído em 16/09/2026 | Decisões que afetam contratos registradas; baseline atual medido; contratos versionados; ambiente de teste e caminho de build definidos. |
+| 02 | [P02 — reforma grafica](../concluidos/02_CONCLUIDO_P02_REFORMA_GRAFICA.md) | Concluído em 18/09/2026 | Cena jogável comparada, orçamento de frame/memória registrado, tecnologia escolhida e referência visual aceita. |
 | 03 | [P04 — jogabilidade e continuar](03_EM_ANDAMENTO_P04_JOGABILIDADE_E_CONTINUAR.md) | Em andamento — base existente; aguarda sua vez | Retomada local e migrações verificadas; encerramento de processo não promete save que falhou; contratos de consumo/recompensa disponíveis para P09. |
 | 04 | [P12 — audio acessibilidade e fluidez](04_PENDENTE_P12_AUDIO_ACESSIBILIDADE_E_FLUIDEZ.md) | Pendente | Serviço de áudio, preferências, acessibilidade e níveis de qualidade funcionam no jogo existente; metas medidas nessa base. |
 | 05 | [P03 — abertura home e menus](05_PENDENTE_P03_ABERTURA_HOME_E_MENUS.md) | Pendente | Boot, intro, Home, Jogar/Continuar, Menu, Ajuda e Tutorial funcionam. Destinos de conta, perfil, coleção e Shop têm contratos definidos e liberação controlada. |
@@ -166,6 +196,40 @@ A antecipação de tarefas não adiciona todo seu esforço de novo: preparação
 P01-07 deve reestimar o restante após decisões de arte, escopo comercial, aparelhos e resultados do diagnóstico.
 Migração de engine, produção artística original ampla e pagamento real exigem estimativa própria quando escolhidos.
 
-**Próxima ação concreta: terminar P01-01 e avançar P01-02–P01-09.**
+**Próxima ação concreta: iniciar P04-01 e consolidar o contrato de sessão, checkpoint e retomada local.**
 Não retomar diretamente ajustes numéricos em P06 só porque seu arquivo está em andamento.
-Primeiro validar a base com um soldado; o ajuste fino entra após conteúdo/câmera estáveis.
+O diagnóstico com um soldado está concluído; o ajuste fino entra após conteúdo/câmera estáveis.
+
+## Ondas de Ruptura — direção aprovada (16/09/2026)
+
+Complemento da Linha de Fogo Tática. É uma decisão de produto documentada; não altera código, números,
+arte, saves nem o estado de aceite atual.
+
+- A linguagem apresentada ao jogador passa a ser `WAVE 1/10` até `WAVE 10/10`. A futura implementação
+  preserva IDs, configuração técnica e save de campanha existentes enquanto houver compatibilidade; qualquer
+  mudança de persistência exige versão, migração e testes do dono P04 antes de substituir o termo interno `stage`.
+- Cada Wave começa com prévia legível de 1–2 s, mostra a composição/ameaça principal e apresenta ao menos
+  um portal realmente útil antes da horda principal. A vanguarda entra em 1–2 s e representa 20–35% da
+  composição; o restante chega em blocos curtos e distintos. Não despejar todos os inimigos ao mesmo tempo,
+  nem inserir espera sem decisão.
+- A escolha de portal expressa uma doutrina situacional — poder, dano ou cadência contra a ameaça que vem —,
+  e não uma resposta universal. A regra de benefício efetivo após caps permanece: opção sem efeito é substituída
+  deterministicamente; se nenhuma for útil, o par é omitido.
+- A Formação de Ruptura combina runner/líder, coluna blindada e suporte protetor com vínculo e núcleo visíveis.
+  Alinhar manualmente o tiro no suporte ou no líder cria uma abertura temporária e perceptível. Tiros continuam
+  retos, a mira continua por arrasto e o dano depende de colisão: não há auto-aim, homing, hitbox oculta,
+  dificuldade adaptativa escondida ou proteção sem solução alcançável.
+- Ao fim, o `Eco de Comando` mostra no máximo dois fatos reais da Wave (por exemplo, portal aplicado, suporte
+  rompido ou causa da perda) e, quando houver base factual, uma única dica para a próxima tentativa. Ele não
+  concede moeda, não cria temporizador, energia, gacha, FOMO ou pressão para reiniciar.
+
+| Responsável | Contrato desta direção |
+| --- | --- |
+| P03 | Ensina Wave, portal e ruptura sem sobrecarregar o primeiro minuto; apresenta Eco breve e opcional. |
+| P05 | Implementa composição, prévia, vanguarda, blocos, formações e eventos factuais do Eco. |
+| P06 | Mede clareza, tempo de decisão, abertura da ruptura, escolhas, perdas e diversão declarada. |
+| P12 | Mantém prévia, vínculo, abertura e Eco reconhecíveis com som desligado ou qualidade reduzida. |
+| P13 | Valida a jornada completa e compatibilidade de save/RETRY nos aparelhos-alvo. |
+
+Os valores de HP, dano, cadência, quantidade de inimigos e duração final continuam candidatos de P06. A
+recomendação só pode ser aceita funcionalmente após os testes e sessões humanas definidos nos planos donos.

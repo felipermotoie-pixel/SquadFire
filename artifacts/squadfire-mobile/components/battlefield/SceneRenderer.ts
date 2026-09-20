@@ -274,7 +274,7 @@ export class SceneRenderer {
 
   // ---------------------------------------------------------------------------
 
-  draw(canvas: SkCanvas, game: Game, shakeX: number, shakeY: number, debug: boolean): void {
+  draw(canvas: SkCanvas, game: Game, shakeX: number, shakeY: number, debugGeometry: boolean, performanceHud: boolean): void {
     const cam = game.cam;
     this.ensureCamera(cam);
     const t = game.time;
@@ -300,7 +300,8 @@ export class SceneRenderer {
     this.drawHaze(canvas, cam);
     this.drawTracerCores(canvas);
     this.drawPopups(canvas, game);
-    if (debug) this.drawDebug(canvas, game);
+    if (debugGeometry) this.drawDebugGeometry(canvas, game);
+    if (performanceHud) this.drawPerformanceHud(canvas, game);
 
     canvas.restore();
   }
@@ -933,6 +934,33 @@ export class SceneRenderer {
     }
 
     this.drawSprite(canvas, this.assets.soldier, frame, rotation + extraRot, sx, sy, bob + recoilY + dropY, alpha, filter, buff ? '#e53935' : '#2a7fe0');
+    if (buff > 0 && s.death === 0 && s.age > 0.45) {
+      // The P10 keeps the same simulated body/muzzle as a P1. This short white chevron is
+      // purely an ally/readability mark: red alone would otherwise overlap the enemy family.
+      const mark = this.tmpPath;
+      const cx = frame.pivotX;
+      const top = frame.top + frame.height * 0.38;
+      const half = frame.width * 0.19;
+      const depth = frame.height * 0.095;
+      mark.reset();
+      mark.moveTo(cx - half, top);
+      mark.lineTo(cx, top + depth);
+      mark.lineTo(cx + half, top);
+
+      const line = this.stroke;
+      line.setColor(Skia.Color('#f4fbff'));
+      line.setStrokeWidth(Math.max(1.4, frame.width * 0.05));
+      line.setAlphaf(alpha * 0.95);
+      canvas.save();
+      canvas.translate(frame.pivotX, frame.pivotY + bob + recoilY + dropY);
+      canvas.rotate((rotation + extraRot) * DEG, 0, 0);
+      canvas.scale(sx, sy);
+      canvas.translate(-frame.pivotX, -frame.pivotY);
+      canvas.drawPath(mark, line);
+      canvas.restore();
+      line.setStrokeWidth(1);
+      line.setAlphaf(1);
+    }
   }
 
   private drawEnemy(canvas: SkCanvas, game: Game, e: Enemy, t: number): void {
@@ -1588,7 +1616,7 @@ export class SceneRenderer {
     canvas.drawLine(d.x, d.y, a.x, a.y, s);
   }
 
-  private drawDebug(canvas: SkCanvas, game: Game): void {
+  private drawDebugGeometry(canvas: SkCanvas, game: Game): void {
     const cam = game.cam;
     const s = this.stroke;
     const p = this.paint;
@@ -1728,7 +1756,16 @@ export class SceneRenderer {
       const w = project(cam, bz.patrolTargetX, bz.pos.y);
       canvas.drawCircle(w.x, w.y, 5, s);
     }
-    // Counters.
+  }
+
+  /**
+   * Kept separate from debug geometry so physical performance measurements do
+   * not pay for hitboxes, trajectories and per-entity labels.
+   */
+  private drawPerformanceHud(canvas: SkCanvas, game: Game): void {
+    const cam = game.cam;
+    const p = this.paint;
+    const font = this.assets.smallFont;
     if (font) {
       const st = game.stats;
       const lines = [

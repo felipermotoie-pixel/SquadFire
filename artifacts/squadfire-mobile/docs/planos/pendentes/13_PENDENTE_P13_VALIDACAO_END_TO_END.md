@@ -66,6 +66,41 @@ somente o texto realmente concluído; itens parciais permanecem `[ ]` com nota d
 Não há acompanhamento separado. O número inicial do arquivo define a ordem; o ID P13 preserva a referência histórica.
 Se uma alteração invalidar contrato ou aceite anterior, reabrir o item afetado e validar antes de avançar.
 
+## Aceite integrado da Linha de Fogo Tática (16/09/2026)
+
+Planejamento aprovado, integrado a P13-02/04/05/06; execução pendente.
+
+- Repetir escudo/ponto fraco, suporte, escolha útil de portal e mudanças P10 nas taxas 30/60/120 Hz.
+  Verificar coerência entre aviso desenhado, colisão real, som e momento da perda.
+- Executar sequência tutorial → fase com runner → proteção → boss → pausa/fechar → Continuar.
+  Restauração não duplica recompensa ou fato do resumo; derrota/RETRY recomeça com um soldado.
+- Testar leitura com efeitos reduzidos, som desligado, skins e pior caso 499/500 no aparelho mínimo/alvo.
+  Medir frame time e calor com conteúdo final, sem substituir evidência física por simulação.
+- Consolidar piloto de P06 e beta: distinguir habilidade aprendida, clareza e vontade de repetir de
+  tempo gasto em telas. Registrar causas de abandono e erros de compreensão; corrigir problemas recorrentes.
+  Nenhum resultado de diversão/retorno pode ser declarado antes dessas sessões.
+
+Registro documental: 16/09/2026 — estratégia aprovada pelo responsável e incorporada às atividades acima.
+As caixas de implementação permanecem abertas; aceite funcional e humano ainda pendente.
+
+## Aceite integrado das Ondas de Ruptura (16/09/2026)
+
+Planejamento aprovado, integrado a P13-02/03/04/05/06; execução pendente.
+
+- Executar a jornada: tutorial → Wave 1 com prévia/portal → vanguarda/blocos → ruptura → Eco → Wave 5 boss
+  → pausa/fechar → Continuar. Repetir Wave 10 e derrota/RETRY; partidas novas e RETRY começam com um soldado.
+- Verificar que `WAVE X/10` é somente linguagem de UI: saves existentes continuam abrindo, checkpoint não se
+  duplica e nenhuma migração ocorre sem versão/teste do P04. Conferir poder 19 = 1 P10 vermelho + 9 P1 azuis
+  e P10 com fogo equivalente a dez P1 em cada jornada relevante.
+- Rodar 30/60/120 Hz, Android/iPhone/web e qualidade normal/reduzida com prévia, vanguarda, blocos e ruptura.
+  Medir frame time, memória e calor em aparelho físico sem painel ou overlay de depuração; registrar também
+  a condição de medição quando o painel for necessário para diagnóstico.
+- Em beta, conferir que a decisão relatada corresponde ao evento registrado e que o Eco não afirma fatos
+  inexistentes. Documentar dificuldade, clareza, aprendizado e vontade espontânea de repetir, sem converter
+  essas respostas em alegação de retenção ou vício comprovado.
+
+Registro documental: 16/09/2026 — este adendo não executou regressões, beta, testes físicos ou mudanças de jogo.
+
 ## Registro da revisão
 
 15/09/2026 — revisão 1.1: dependências, aceite por etapa e responsabilidades corrigidos por inspeção dos planos e do código.

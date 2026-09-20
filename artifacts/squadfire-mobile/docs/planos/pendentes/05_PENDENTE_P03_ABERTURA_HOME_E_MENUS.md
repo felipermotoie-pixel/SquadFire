@@ -64,6 +64,47 @@ somente o texto realmente concluído; itens parciais permanecem `[ ]` com nota d
 Não há acompanhamento separado. O número inicial do arquivo define a ordem; o ID P03 preserva a referência histórica.
 Se uma alteração invalidar contrato ou aceite anterior, reabrir o item afetado e validar antes de avançar.
 
+## UI para domínio e vontade de repetir (16/09/2026)
+
+Planejamento aprovado, integrado a P03-03/05/06/07; mecânicas novas são integradas por P05.
+
+- Home destaca Continuar quando houver checkpoint válido; caso contrário, Jogar. Mostrar fase/objetivo
+  com linguagem curta. Nova partida pede confirmação apenas quando substituir uma retomada existente.
+- Tutorial de 30–45 s ensina arrastar para alinhar tiros, escolher ganho útil e reconhecer P10.
+  P05 introduz cada ameaça nova na campanha com uma demonstração segura e uma instrução contextual curta,
+  evitando concentrar todas as mecânicas no primeiro tutorial.
+- Nas transições, resumo não modal e breve com no máximo dois fatos e uma dica fundamentada:
+  por exemplo, runner abatido antes do contato ou perda por ataque sinalizado. Não interromper o controle
+  nem alongar a transição para obrigar leitura; detalhes ficam no resultado final.
+- Usar acertos/disparos válidos e perdas com definições de P08; não inventar “precisão de rota” ou
+  chamar um portal de “melhor escolha” sem comparação verificável. Mostrar ganho aplicado é suficiente.
+- Derrota apresenta causa compreensível, uma dica e RETRY; RETRY inicia fase 1 com um soldado.
+  Vitória oferece resumo e retorno ao Home, com próximo objetivo disponível. Sem reinício forçado,
+  sequência diária punitiva ou contagem regressiva para pressionar outra partida.
+- Aceite adicional: usuário encontra Jogar/Continuar sem ajuda, compreende a dica e consegue voltar
+  ao combate em até duas ações a partir do Home. Conteúdo de tutorial futuro não fica ativo antes de P05.
+
+Registro documental: 16/09/2026 — estratégia aprovada pelo responsável e incorporada às atividades acima.
+As caixas de implementação permanecem abertas; aceite funcional e humano ainda pendente.
+
+## UI de Waves e Eco de Comando (16/09/2026)
+
+Planejamento aprovado, integrado a P03-03/05/06/07; P05 continua dono das mecânicas e P06 da medição.
+
+- A interface apresentada ao jogador usa `WAVE X/10`, incluindo Wave 5 e Wave 10; não expõe a nomenclatura
+  técnica de stage. A troca visual não autoriza alterar save, Continuar ou IDs de campanha.
+- O tutorial de 30–45 s mantém três ações: arrastar para alinhar tiros, escolher um portal útil e romper uma
+  proteção visível. Runner, blindagem e suporte entram progressivamente na campanha por P05, cada um com
+  demonstração segura e texto curto; não concentrar regras novas no primeiro minuto.
+- Após uma Wave, exibir Eco não modal, descartável e curto: até dois fatos e uma dica somente quando os eventos
+  de P05 a sustentarem. Exemplos aceitáveis: ganho aplicado, suporte removido ou contato sofrido. Não dizer
+  "melhor escolha", "precisão" ou causa sem evidência, nem bloquear a próxima Wave para leitura.
+- Aceite adicional: a pessoa reconhece que a prévia anuncia a próxima ameaça, identifica o ganho aplicado,
+  entende a ruptura e volta ao combate em até duas ações. Som desligado, movimento reduzido e qualidade baixa
+  continuam com equivalentes visuais definidos por P12.
+
+Registro documental: 16/09/2026 — nenhuma tela, tutorial ou resumo foi implementado nesta atualização.
+
 ## Registro da revisão
 
 15/09/2026 — revisão 1.1: dependências, aceite por etapa e responsabilidades corrigidos por inspeção dos planos e do código.
